@@ -338,6 +338,11 @@
       <h2 data-page-node-id="WGazruRO0VeN5lrozXhXZd">🎯 薄弱知识点排行（按错题次数）</h2>
       <div id="weak-kps" data-page-node-id="SDZX3xT5cGn1OxUvUaHR5a"></div>
     </div>
+    <div class="card" data-page-node-id="gradeAnalysisCard">
+      <h2 data-page-node-id="gradeAnalysisTitle">🏫 按年级分析</h2>
+      <div id="grade-analysis" data-page-node-id="gradeAnalysisBody"></div>
+      <p class="hint" data-page-node-id="gradeAnalysisHint">按学生账号上的年级归类统计。判读：某年级某科明显偏低 → 该年级需要针对性补强；年级间差距拉大 → 关注教学进度差异。</p>
+    </div>
   </div>
 
   <!-- ============ 追踪事项 ============ -->
@@ -1114,7 +1119,7 @@ function switchToEntry(){
 /* ================= 统计 ================= */
 function renderStats(){
   const exams = fArr('exams');
-  if(!exams.length){ document.getElementById('overall-metrics').innerHTML='<div class="empty" style="grid-column:1/-1">当前范围暂无数据</div>'; document.getElementById('chart-trend').innerHTML=''; document.getElementById('chart-rank').innerHTML=''; document.getElementById('chart-wrongtype').innerHTML=''; document.getElementById('weak-kps').innerHTML='<div class="empty">暂无数据</div>'; return; }
+  if(!exams.length){ document.getElementById('overall-metrics').innerHTML='<div class="empty" style="grid-column:1/-1">当前范围暂无数据</div>'; document.getElementById('chart-trend').innerHTML=''; document.getElementById('chart-rank').innerHTML=''; document.getElementById('chart-wrongtype').innerHTML=''; document.getElementById('weak-kps').innerHTML='<div class="empty">暂无数据</div>'; document.getElementById('grade-analysis').innerHTML='<div class="empty">暂无数据</div>'; return; }
   // 与记录页一致的分组规则：同周次标签 = 同一次考试
   const groups = groupExamsByWeek(exams);
   const n = groups.length;
@@ -1135,7 +1140,7 @@ function renderStats(){
       }
       return `<div class="metric"><div class="lbl"><span class="subject-tag" style="background:${SUB[k].color}"></span>${SUB[k].name}得分率${ownerFilter?'':('（'+esc(String(latest.exams.filter(e=>e.scores[k]).length))+'人均分）')}</div><div class="val" style="color:${SUB[k].color}">${r.toFixed(1)}%</div><span class="badge ${rc.cls}">${rc.label}</span> ${trend}</div>`;
     }).join('')}`;
-  renderTrendChart(groups); renderRankChart(groups); renderWrongTypeChart(); renderWeakKps();
+  renderTrendChart(groups); renderRankChart(groups); renderWrongTypeChart(); renderWeakKps(); renderGradeAnalysis(groups);
 }
 /* 按周次分组：同周次=同一次考试；返回按最近日期排序的组数组 */
 function groupExamsByWeek(exams){
@@ -1166,6 +1171,59 @@ function groupAvgRank(g,k){
   const arr = g.exams.filter(e=>e.scores[k]&&e.scores[k].rank);
   if(!arr.length) return null;
   return arr.reduce((s,e)=>s+e.scores[k].rank,0)/arr.length;
+}
+/* ============ 按年级分析：把每次考试（周次组）内的记录按学生年级归类对比 ============ */
+const RATE_COLOR = {green:'#16a34a', blue:'#2563eb', orange:'#d97706', red:'#dc2626'};
+function examGrade(e){ return userGrade(e.owner) || '未设年级'; }
+function gradeSortIdx(name){ const i = GRADES.indexOf(name); return i<0 ? 999 : i; }
+/* 某次考试（周次组）内，指定年级某科的平均得分率（%），无人有该科成绩返回 null */
+function groupGradeRate(g,k,grade){
+  const arr = g.exams.filter(e=>examGrade(e)===grade && e.scores[k]);
+  if(!arr.length) return null;
+  return arr.reduce((s,e)=>s+e.scores[k].score/state.full[k]*100,0)/arr.length;
+}
+function renderGradeAnalysis(groups){
+  const box = document.getElementById('grade-analysis');
+  if(!box) return;
+  const grades = [...new Set(fArr('exams').map(examGrade))].sort((a,b)=>gradeSortIdx(a)-gradeSortIdx(b));
+  if(!grades.length){ box.innerHTML='<div class="empty">暂无数据</div>'; return; }
+  if(grades.length===1){
+    box.innerHTML = `<p class="hint" style="margin:0">当前范围内所有学生均为「${esc(grades[0])}」，暂无需按年级对比。等有其他年级的学生加入后，这里会自动出现年级间成绩对比。</p>`;
+    return;
+  }
+  const n = groups.length;
+  const latest = groups[n-1], prev = n>1 ? groups[n-2] : null;
+  /* 表头 */
+  const head = '<div class="tbl-wrap"><table class="table"><thead><tr><th>年级</th><th>人数</th>'
+    + Object.keys(SUB).map(k=>`<th><span class="subject-tag" style="background:${SUB[k].color}"></span>${SUB[k].name}得分率</th>`).join('')
+    + '<th>错题数（累计）</th></tr></thead><tbody>';
+  const rows = grades.map(g=>{
+    const members = latest.exams.filter(e=>examGrade(e)===g);
+    const wc = fArr('wrongs').filter(w=>examGrade(w)===g).length;
+    const tds = Object.keys(SUB).map(k=>{
+      const r = groupGradeRate(latest,k,g);
+      if(r==null) return '<td style="color:#9ca3af">—</td>';
+      const rc = rateCls(r);
+      let delta='';
+      if(prev){
+        const p = groupGradeRate(prev,k,g);
+        if(p!=null){ const d=r-p; delta = `<div style="font-size:11px;color:${d>=0?'#16a34a':'#dc2626'}">${d>=0?'↑':'↓'} ${Math.abs(d).toFixed(1)}</div>`; }
+      }
+      return `<td><b style="color:${RATE_COLOR[rc.cls]}">${r.toFixed(1)}%</b>${delta}</td>`;
+    }).join('');
+    return `<tr><td><b>${esc(g)}</b></td><td>${members.length} 人</td>${tds}<td>${wc?'📕 '+wc:'—'}</td></tr>`;
+  }).join('');
+  /* 自动找短板：最近一次考试里得分率最低的年级×科目 */
+  let weakest=null;
+  grades.forEach(g=>Object.keys(SUB).forEach(k=>{
+    const r = groupGradeRate(latest,k,g);
+    if(r!=null && (!weakest || r<weakest.r)) weakest = {g,k,r};
+  }));
+  const summary = weakest
+    ? `<p class="hint" style="margin-top:8px">⚠️ 重点关注：<b>${esc(weakest.g)}</b> 的${SUB[weakest.k].name}（得分率 ${weakest.r.toFixed(1)}%，为所有年级×科目中最低）${weakest.r<50?'，已低于 50%，建议重讲对应知识点':'。'}</p>`
+    : '';
+  box.innerHTML = `<p class="hint" style="margin:0 0 6px">最近一次考试：${esc(groupTitle(latest))}${prev?'（括号内为较上一次「'+esc(groupTitle(prev))+'」的变化）':'；只有一次考试，暂无变化对比'}</p>`
+    + head + rows + '</tbody></table></div>' + summary;
 }
 /* ============ 趋势图：x轴=考试（周次组），点=组内平均得分率；仅一次考试时只画点不画线 ============ */
 function renderTrendChart(groups){

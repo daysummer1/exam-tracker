@@ -1,0 +1,427 @@
+/**
+ * 每周考试成绩追踪 — 多用户同步服务器（零依赖，纯 Node.js）
+ *
+ * 权限模型：
+ * - 用户登录（用户名+密码，sha256(salt+password) 存储），签发 HMAC token
+ * - 普通成员：只能增/改/删自己的数据（服务端强制校验）；所有人的数据可见
+ * - 管理员：可编辑所有人的数据、修改满分设置、管理用户（添加/删除/重置密码）、审批自主注册申请
+ * - 自主注册：访客可提交注册申请（用户名按姓名拼音首字母生成），须管理员审批通过后才能登录
+ * - 默认管理员：admin / admin123（请登录后尽快在用户管理中重置密码）
+ */
+const http = require('http');
+const fs = require('fs');
+const path = require('path');
+const crypto = require('crypto');
+
+const PORT = process.env.PORT || 3000;
+const HOST = '0.0.0.0';
+const DIR = __dirname;
+/* 数据目录：优先使用外部目录（环境变量 DATA_DIR），重新发布/更新代码时不会覆盖用户数据 */
+const DATA_DIR = process.env.DATA_DIR || DIR;
+try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
+const DATA_FILE = path.join(DATA_DIR, 'data.json');
+const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+
+/* 首次切换到外部数据目录时，迁移本地已有数据 */
+if (DATA_DIR !== DIR && !fs.existsSync(DATA_FILE) && fs.existsSync(path.join(DIR, 'data.json'))) {
+  try { fs.copyFileSync(path.join(DIR, 'data.json'), DATA_FILE); console.log('📦 已迁移历史数据到', DATA_FILE); } catch (e) {}
+}
+if (DATA_DIR !== DIR && !fs.existsSync(CONFIG_FILE) && fs.existsSync(path.join(DIR, 'config.json'))) {
+  try { fs.copyFileSync(path.join(DIR, 'config.json'), CONFIG_FILE); } catch (e) {}
+}
+
+const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
+const rand = n => crypto.randomBytes(n).toString('hex');
+
+/* ---------- 配置（HMAC 密钥） ---------- */
+let config;
+try { config = JSON.parse(fs.readFileSync(CONFIG_FILE, 'utf8')); } catch (e) {}
+if (!config || !config.secret) {
+  config = { secret: rand(16) };
+  fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2));
+}
+
+/* ---------- 数据库 ---------- */
+/* 结构: { users:[{username,name,role,salt,pwhash}], exams:[], wrongs:[], tracks:[], full:{...} } */
+let db = null;
+try {
+  const d = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+  // 兼容旧版单用户结构 {version, data:{exams...}}
+  const src = d && d.data ? d.data : d;
+  if (src && (Array.isArray(src.exams) || Array.isArray(src.users))) db = src;
+} catch (e) {}
+
+function initDb() {
+  if (!db || !Array.isArray(db.users) || !db.users.length) {
+    const salt = rand(8);
+    db = {
+      users: [{ username: 'admin', name: '管理员', role: 'admin', salt, pwhash: sha(salt + 'admin123') }],
+      exams: [], wrongs: [], tracks: [],
+      full: { chinese: 100, math: 100, english: 100 }
+    };
+  }
+  ['exams', 'wrongs', 'tracks'].forEach(k => {
+    if (!Array.isArray(db[k])) db[k] = [];
+    db[k].forEach(r => { if (!r.owner) r.owner = 'admin'; });
+  });
+  if (!db.full || typeof db.full !== 'object') db.full = { chinese: 100, math: 100, english: 100 };
+  ['chinese', 'math', 'english'].forEach(k => { if (!db.full[k]) db.full[k] = 100; });
+  /* 站点设置：是否允许自主注册（默认开启）与待审批的注册申请 */
+  if (!db.settings || typeof db.settings !== 'object') db.settings = { allowSignup: true };
+  if (typeof db.settings.allowSignup !== 'boolean') db.settings.allowSignup = true;
+  if (!Array.isArray(db.registrations)) db.registrations = [];
+  /* 学校 / 年级：老数据补齐字段（学生默认六年级，管理员不设年级） */
+  db.users.forEach(u => {
+    if (typeof u.school !== 'string') u.school = '';
+    if (u.grade === undefined) {
+      if (u.role === 'admin') { u.grade = ''; u.gradeYear = 0; }
+      else { u.grade = DEFAULT_GRADE; u.gradeYear = acadYearStart(); }
+    }
+    if (gradeIndex(u.grade) >= 0 && !u.gradeYear) u.gradeYear = acadYearStart();
+  });
+}
+/* 持久化 + 滚动备份（保留最近 5 份），误操作可回滚 */
+function persist() {
+  try {
+    for (let i = 4; i >= 1; i--) {
+      const s = path.join(DATA_DIR, `data.backup.${i}.json`);
+      const t = path.join(DATA_DIR, `data.backup.${i + 1}.json`);
+      if (fs.existsSync(s)) fs.copyFileSync(s, t);
+    }
+    if (fs.existsSync(DATA_FILE)) fs.copyFileSync(DATA_FILE, path.join(DATA_DIR, 'data.backup.1.json'));
+    fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+  } catch (e) { console.error('persist fail', e); }
+}
+function saveConfig() { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); }
+
+/* ---------- 用户与认证 ---------- */
+/* ---------- 学校 / 年级 ---------- */
+/* 学级序列：小学 1-6 年级 → 初中 3 年 → 高中 3 年 */
+const GRADES = ['一年级', '二年级', '三年级', '四年级', '五年级', '六年级', '初一', '初二', '初三', '高一', '高二', '高三'];
+const DEFAULT_GRADE = '六年级';          // 新用户默认年级（另一个常用年级为「初一」）
+/* 学年起点：每年 9 月 1 日。例：2026-09 ~ 2027-08 属于 2026 学年 */
+function acadYearStart(ts) {
+  const d = ts ? new Date(ts) : new Date();
+  return d.getMonth() >= 8 ? d.getFullYear() : d.getFullYear() - 1;
+}
+function gradeIndex(g) { return GRADES.indexOf(String(g || '')); }
+/* 升 n 级（到顶后保持高三） */
+function advanceGrade(grade, n) {
+  const i = gradeIndex(grade);
+  if (i < 0) return '';
+  return GRADES[Math.min(i + Math.max(0, n | 0), GRADES.length - 1)];
+}
+/* 实际年级 = 录入时年级 + 已经过的学年数（跨学年自动升级） */
+function effectiveGrade(u) {
+  if (gradeIndex(u.grade) < 0) return '';
+  const y0 = +u.gradeYear || acadYearStart();
+  return advanceGrade(u.grade, acadYearStart() - y0);
+}
+/* 学年自动升级：把过期的年级落库（每次请求前调用，确保数据一致） */
+function promoteUsers() {
+  const ay = acadYearStart();
+  let changed = false;
+  (db.users || []).forEach(u => {
+    if (gradeIndex(u.grade) < 0) return;                 // 未设置年级：不处理
+    const eff = effectiveGrade(u);
+    if (eff !== u.grade) { u.grade = eff; u.gradeYear = ay; changed = true; }
+    else if (!u.gradeYear) { u.gradeYear = ay; changed = true; }   // 老数据补齐基准学年
+  });
+  if (changed) persist();
+  return changed;
+}
+
+function makeUser(username, name, password, role, extra) {
+  const salt = rand(8);
+  const u = { username, name, role, school: '', grade: '', gradeYear: 0, salt, pwhash: sha(salt + password) };
+  const e = extra || {};
+  if (typeof e.school === 'string') u.school = e.school.trim().slice(0, 30);
+  /* 管理员（家长/老师）默认不设年级；学生默认六年级 */
+  const g = gradeIndex(e.grade) >= 0 ? e.grade : (role === 'admin' ? '' : DEFAULT_GRADE);
+  u.grade = g; u.gradeYear = g ? acadYearStart() : 0;
+  return u;
+}
+function findUser(username) { return db.users.find(u => u.username === username); }
+
+/* 初始化数据库 + 启动时按学年自动升级（跨 9/1 后重启即生效） */
+initDb();
+promoteUsers();
+
+function safeUser(u) {
+  const ay = acadYearStart();
+  const y0 = +u.gradeYear || ay;
+  const g = effectiveGrade(u);
+  return {
+    username: u.username, name: u.name, role: u.role,
+    school: u.school || '', grade: g,
+    gradeYear: y0,
+    /* 下一次学年自动升级的时间与该次升到的年级（用于界面提示） */
+    nextGradeDate: (y0 + 1) + '-09-01',
+    nextGrade: gradeIndex(u.grade) >= 0 ? advanceGrade(u.grade, (ay - y0) + 1) : ''
+  };
+}
+function sign(username) { return 't1.' + Buffer.from(username).toString('base64url') + '.' + crypto.createHmac('sha256', config.secret).update(username).digest('hex'); }
+function auth(req) {
+  const t = req.headers['x-auth'];
+  if (!t || typeof t !== 'string') return null;
+  const parts = t.split('.');
+  if (parts.length !== 3 || parts[0] !== 't1') return null;
+  let username;
+  try { username = Buffer.from(parts[1], 'base64url').toString('utf8'); } catch (e) { return null; }
+  const expect = crypto.createHmac('sha256', config.secret).update(username).digest('hex');
+  if (parts[2] !== expect) return null;
+  const u = findUser(username);
+  return u ? { ...u } : null;
+}
+
+/* ---------- 权限 ---------- */
+function canEdit(user, owner) { return user.role === 'admin' || user.username === owner; }
+
+/* ---------- 工具 ---------- */
+const KINDS = ['exams', 'wrongs', 'tracks'];
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let b = '', size = 0;
+    req.on('data', c => { size += c.length; if (size > 5 * 1024 * 1024) { reject(new Error('too large')); req.destroy(); } else b += c; });
+    req.on('end', () => { try { resolve(b ? JSON.parse(b) : {}); } catch (e) { reject(e); } });
+    req.on('error', reject);
+  });
+}
+function json(res, code, obj) {
+  res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+  res.end(JSON.stringify(obj));
+}
+function visibleState(user) {
+  /* 始终读取数据库中的最新用户对象（auth 返回的是快照，资料/年级可能刚被修改或升级） */
+  const fresh = findUser(user.username) || user;
+  const out = { ok: true, user: safeUser(fresh), exams: db.exams, wrongs: db.wrongs, tracks: db.tracks, full: db.full,
+    settings: { allowSignup: db.settings.allowSignup !== false } };
+  /* 成员名册（姓名/学校/年级），用于记录与对比表显示；不含任何凭据字段 */
+  out.users = db.users.map(safeUser);
+  if (fresh.role === 'admin') {
+    // 待审批注册申请（不含密码哈希等敏感字段）
+    out.registrations = (db.registrations || []).map(r => ({
+      id: r.id, username: r.username, name: r.name, createdAt: r.createdAt,
+      school: r.school || '', grade: r.grade || ''
+    }));
+  }
+  return out;
+}
+
+/* ---------- 静态文件 ---------- */
+const MIME = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8', '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
+function serveStatic(req, res) {
+  let p = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+  if (p === '/') p = '/index.html';
+  const file = path.join(DIR, path.normalize(p).replace(/^(\.\.[\/\\])+/, ''));
+  if (!file.startsWith(DIR)) { res.writeHead(403); res.end('Forbidden'); return; }
+  fs.readFile(file, (err, buf) => {
+    if (err) { res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' }); res.end('404 Not Found'); return; }
+    res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
+    res.end(buf);
+  });
+}
+
+/* ---------- 服务器 ---------- */
+const server = http.createServer(async (req, res) => {
+  const url = new URL(req.url, 'http://x');
+  try {
+    /* 登录（无需认证） */
+    if (url.pathname === '/api/login' && req.method === 'POST') {
+      const body = await readBody(req);
+      const uname = String(body.username || '').trim();
+      const u = findUser(uname);
+      if (!u) {
+        // 未通过审批的注册申请给出明确提示
+        const pending = (db.registrations || []).find(r => r.username === uname);
+        if (pending) return json(res, 403, { error: '注册申请正在等待管理员审批，通过后即可登录' });
+        return json(res, 401, { error: '用户名或密码错误' });
+      }
+      if (u.pwhash !== sha(u.salt + String(body.password || ''))) return json(res, 401, { error: '用户名或密码错误' });
+      return json(res, 200, { ok: true, token: sign(u.username), user: safeUser(u) });
+    }
+
+    /* 站点公开设置（无需认证）：登录页据此决定是否展示注册入口 */
+    if (url.pathname === '/api/settings' && req.method === 'GET') {
+      return json(res, 200, { ok: true, allowSignup: db.settings.allowSignup !== false });
+    }
+
+    /* 自主注册（无需认证）：提交申请，等管理员审批 */
+    if (url.pathname === '/api/register' && req.method === 'POST') {
+      const body = await readBody(req);
+      if (db.settings.allowSignup === false) return json(res, 403, { error: '当前未开放自主注册，请联系管理员开通账号' });
+      const name = String(body.name || '').trim();
+      const password = String(body.password || '');
+      let username = String(body.username || '').trim().toLowerCase();
+      if (!name) return json(res, 400, { error: '请填写姓名' });
+      if (name.length > 20) return json(res, 400, { error: '姓名过长（最多 20 字）' });
+      if (!/^[a-z0-9_]{2,20}$/.test(username)) username = '';   // 非法则退回自动生成
+      if (!username) username = 'u' + crypto.randomBytes(3).toString('hex');
+      if (password.length < 4) return json(res, 400, { error: '密码至少 4 位' });
+      const school = String(body.school || '').trim().slice(0, 30);
+      const grade = gradeIndex(body.grade) >= 0 ? String(body.grade) : DEFAULT_GRADE;
+      if (findUser(username)) return json(res, 400, { error: '用户名「' + username + '」已被占用，请换一个' });
+      const dup = (db.registrations || []).find(r => r.username === username);
+      if (dup) return json(res, 409, { error: '用户名「' + username + '」已有待审批的申请，请更换或等待审批' });
+      const reg = Object.assign(
+        { id: 'reg' + Date.now().toString(36) + crypto.randomBytes(2).toString('hex'), createdAt: Date.now() },
+        makeUser(username, name, password, 'member', { school, grade })
+      );
+      db.registrations.push(reg);
+      persist();
+      return json(res, 200, { ok: true, pending: true, username, name, school, grade });
+    }
+
+    /* 以下均需登录 */
+    const user = auth(req);
+    if (url.pathname.startsWith('/api/')) {
+      if (!user) return json(res, 401, { error: '未登录或登录已失效，请重新登录' });
+
+      if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, visibleState(user));
+
+      if (url.pathname === '/api/op' && req.method === 'POST') {
+        const body = await readBody(req);
+        if (body.op === 'settings') {
+          if (user.role !== 'admin') return json(res, 403, { error: '只有管理员可以修改满分设置' });
+          const f = body.full || {};
+          ['chinese', 'math', 'english'].forEach(k => { if (f[k] && +f[k] > 0) db.full[k] = +f[k]; });
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        if (body.op === 'signup') {
+          if (user.role !== 'admin') return json(res, 403, { error: '只有管理员可以修改注册设置' });
+          db.settings.allowSignup = !!body.allow;
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        const kind = body.kind;
+        if (!KINDS.includes(kind)) return json(res, 400, { error: '无效的数据类型' });
+        if (body.op === 'upsert') {
+          const rec = body.record;
+          if (!rec || typeof rec !== 'object' || !rec.id) return json(res, 400, { error: '缺少记录或 id' });
+          const idx = db[kind].findIndex(x => x.id === rec.id);
+          if (idx >= 0) {
+            // 编辑已有记录：成员只能改自己的
+            if (!canEdit(user, db[kind][idx].owner)) return json(res, 403, { error: '无权限修改他人的记录' });
+            rec.owner = db[kind][idx].owner;
+            rec.createdAt = db[kind][idx].createdAt;
+          } else {
+            // 新建：成员强制归属自己；管理员可指定归属
+            rec.owner = user.role === 'admin' ? (rec.owner || user.username) : user.username;
+            rec.createdAt = rec.createdAt || Date.now();
+          }
+          rec.updatedAt = Date.now();
+          if (idx >= 0) db[kind][idx] = rec; else db[kind].unshift(rec);
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        if (body.op === 'delete') {
+          const idx = db[kind].findIndex(x => x.id === body.id);
+          if (idx < 0) return json(res, 404, { error: '记录不存在' });
+          if (!canEdit(user, db[kind][idx].owner)) return json(res, 403, { error: '无权限删除他人的记录' });
+          db[kind].splice(idx, 1);
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        return json(res, 400, { error: '无效操作' });
+      }
+
+      /* 用户管理（仅管理员；成员仅可修改自己的学校/年级） */
+      if (url.pathname === '/api/users' && req.method === 'POST') {
+        const body = await readBody(req);
+        const selfProfile = body.action === 'profile' && String(body.username || user.username) === user.username;
+        if (user.role !== 'admin' && !selfProfile) return json(res, 403, { error: '只有管理员可以管理用户' });
+        if (body.action === 'add') {
+          const username = String(body.username || '').trim();
+          const name = String(body.name || '').trim();
+          const password = String(body.password || '');
+          const role = body.role === 'admin' ? 'admin' : 'member';
+          if (!/^[a-zA-Z0-9_]{2,20}$/.test(username)) return json(res, 400, { error: '用户名需为 2-20 位字母/数字/下划线' });
+          if (!name) return json(res, 400, { error: '请填写姓名' });
+          if (password.length < 4) return json(res, 400, { error: '密码至少 4 位' });
+          if (findUser(username)) return json(res, 400, { error: '用户名已存在' });
+          db.users.push(makeUser(username, name, password, role, { school: body.school, grade: body.grade }));
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        /* 修改学校 / 年级：管理员可改所有人，成员只能改自己 */
+        if (body.action === 'profile') {
+          const target = String(body.username || user.username);
+          if (target !== user.username && user.role !== 'admin') return json(res, 403, { error: '只能修改自己的资料' });
+          const u = findUser(target);
+          if (!u) return json(res, 404, { error: '用户不存在' });
+          if (typeof body.school === 'string') u.school = body.school.trim().slice(0, 30);
+          if (body.grade !== undefined) {
+            const g = String(body.grade || '').trim();
+            if (g && gradeIndex(g) < 0) return json(res, 400, { error: '年级无效' });
+            if (g !== u.grade) { u.grade = g; u.gradeYear = g ? acadYearStart() : 0; }
+            else if (g && !u.gradeYear) u.gradeYear = acadYearStart();
+          }
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        if (body.action === 'remove') {
+          const username = String(body.username || '');
+          if (username === user.username) return json(res, 400, { error: '不能删除自己' });
+          const idx = db.users.findIndex(u => u.username === username);
+          if (idx < 0) return json(res, 404, { error: '用户不存在' });
+          db.users.splice(idx, 1);
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        if (body.action === 'resetpw') {
+          const u = findUser(String(body.username || ''));
+          const password = String(body.password || '');
+          if (!u) return json(res, 404, { error: '用户不存在' });
+          if (password.length < 4) return json(res, 400, { error: '密码至少 4 位' });
+          u.salt = rand(8); u.pwhash = sha(u.salt + password);
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        if (body.action === 'rename') {
+          const u = findUser(String(body.username || ''));
+          const name = String(body.name || '').trim();
+          if (!u) return json(res, 404, { error: '用户不存在' });
+          if (!name) return json(res, 400, { error: '姓名不能为空' });
+          u.name = name;
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        /* 审批自主注册申请 */
+        if (body.action === 'approve' || body.action === 'reject') {
+          const idx = (db.registrations || []).findIndex(r => r.id === body.id);
+          if (idx < 0) return json(res, 404, { error: '该注册申请不存在或已被处理' });
+          const reg = db.registrations[idx];
+          if (body.action === 'approve') {
+            if (findUser(reg.username)) { db.registrations.splice(idx, 1); persist(); return json(res, 409, { error: '用户名已被占用，申请已自动清除' }); }
+            db.users.push({
+              username: reg.username, name: reg.name, role: 'member', salt: reg.salt, pwhash: reg.pwhash,
+              school: reg.school || '',
+              grade: gradeIndex(reg.grade) >= 0 ? reg.grade : DEFAULT_GRADE,
+              gradeYear: reg.gradeYear || acadYearStart()
+            });
+            db.registrations.splice(idx, 1);
+            persist();
+            const st = visibleState(user);
+            st.approved = { username: reg.username, name: reg.name };
+            return json(res, 200, st);
+          }
+          db.registrations.splice(idx, 1);
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        return json(res, 400, { error: '无效操作' });
+      }
+      return json(res, 404, { error: 'not found' });
+    }
+
+    serveStatic(req, res);
+  } catch (e) {
+    json(res, 500, { error: '服务器内部错误' });
+  }
+});
+
+server.listen(PORT, HOST, () => {
+  console.log(`✅ 服务已启动: http://localhost:${PORT}`);
+  console.log(`👤 默认管理员: admin / admin123`);
+});

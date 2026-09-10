@@ -1,0 +1,13 @@
+{
+  "name": "exam-tracker",
+  "version": "1.0.0",
+  "private": true,
+  "description": "每周考试成绩追踪（多设备同步版）",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

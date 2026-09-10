@@ -1,0 +1,16 @@
+# 运行时数据（含用户账号与成绩，禁止提交）
+data.json
+data.backup.*.json
+config.json
+backups/
+
+# 依赖与日志
+node_modules/
+npm-debug.log*
+*.log
+
+# 系统与编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

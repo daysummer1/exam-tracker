@@ -1,0 +1,1531 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="umBKfbL4p3BD13xoFu9YRB">
+<head data-page-node-id="i7j9qOQanOkxlOtE2zd3uu">
+<meta charset="UTF-8" data-page-node-id="DIN1ptuZ2ZbIxeProRU08l">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" data-page-node-id="lTeEE6sdQUpQ4RHxNl1UxM">
+<meta name="theme-color" content="#2563eb" data-page-node-id="iFXxUZsAKcjqXUZLscSfCi">
+<meta name="apple-mobile-web-app-capable" content="yes" data-page-node-id="De1EfWYsKLIEufbobFzaQa">
+<meta name="mobile-web-app-capable" content="yes" data-page-node-id="ko10FgVCZsK1lsxuCHKPYA">
+<title>每周考试成绩追踪</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --card:#ffffff; --border:#e3e8ef; --text:#1f2937; --muted:#6b7280;
+    --primary:#2563eb; --primary-light:#eff6ff; --danger:#dc2626; --warn:#d97706; --ok:#059669;
+    --chinese:#dc2626; --math:#2563eb; --english:#059669;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{font-family:"Microsoft YaHei","PingFang SC",sans-serif; background:var(--bg); color:var(--text); font-size:14px;}
+  .container{max-width:1080px; margin:0 auto; padding:16px;}
+  header{display:flex; align-items:center; justify-content:space-between; padding:14px 4px; flex-wrap:wrap; gap:8px;}
+  h1{font-size:20px;}
+  .tabs{display:flex; gap:4px; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:4px; overflow-x:auto;}
+  .tab{padding:8px 16px; border-radius:8px; cursor:pointer; white-space:nowrap; border:none; background:transparent; font-size:14px; color:var(--muted);}
+  .tab.active{background:var(--primary); color:#fff;}
+  .card{background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; margin-bottom:16px;}
+  .card h2{font-size:16px; margin-bottom:12px; display:flex; align-items:center; gap:8px;}
+  .grid2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  .grid3{display:grid; grid-template-columns:1fr 1fr 1fr; gap:12px;}
+  @media(max-width:720px){.grid2,.grid3{grid-template-columns:1fr;}}
+  label{display:block; font-size:12px; color:var(--muted); margin-bottom:4px;}
+  input,select,textarea{width:100%; padding:8px 10px; border:1px solid var(--border); border-radius:8px; font-size:14px; font-family:inherit; background:#fff; color:var(--text);}
+  input:focus,select:focus,textarea:focus{outline:none; border-color:var(--primary);}
+  .btn{padding:8px 18px; border:none; border-radius:8px; cursor:pointer; font-size:14px; background:var(--primary); color:#fff;}
+  .btn:hover{opacity:.9;}
+  .btn.ghost{background:transparent; color:var(--primary); border:1px solid var(--primary);}
+  .btn.small{padding:4px 10px; font-size:12px;}
+  .btn.danger{background:var(--danger);}
+  .table{width:100%; border-collapse:collapse;}
+  .table th,.table td{padding:8px 10px; border-bottom:1px solid var(--border); text-align:left; font-size:13px;}
+  .table th{color:var(--muted); font-weight:600; font-size:12px; background:#fafbfc;}
+  .badge{display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px;}
+  .badge.red{background:#fee2e2; color:#b91c1c;}
+  .badge.orange{background:#fef3c7; color:#b45309;}
+  .badge.green{background:#d1fae5; color:#047857;}
+  .badge.blue{background:#dbeafe; color:#1d4ed8;}
+  .badge.gray{background:#e5e7eb; color:#4b5563;}
+  .subject-tag{display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px;}
+  .empty{text-align:center; color:var(--muted); padding:32px 0;}
+  .record-item{border:1px solid var(--border); border-radius:10px; padding:12px; margin-bottom:10px;}
+  .record-head{display:flex; justify-content:space-between; align-items:center; cursor:pointer; flex-wrap:wrap; gap:6px;}
+  .record-body{margin-top:10px; border-top:1px dashed var(--border); padding-top:10px;}
+  .metric{padding:12px; border-radius:10px; background:#fafbfc; border:1px solid var(--border);}
+  .metric .val{font-size:22px; font-weight:700;}
+  .metric .lbl{font-size:12px; color:var(--muted); margin-top:2px;}
+  .track-item{display:flex; align-items:flex-start; gap:10px; padding:10px; border:1px solid var(--border); border-radius:10px; margin-bottom:8px;}
+  .track-item.done{opacity:.55; text-decoration:line-through;}
+  .muted{color:var(--muted); font-size:12px;}
+  .flex{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+  .toast{position:fixed; top:20px; left:50%; transform:translateX(-50%); background:#1f2937; color:#fff; padding:10px 20px; border-radius:8px; display:none; z-index:99;}
+  .score-input{display:flex; gap:4px; align-items:center;}
+  .score-input input{width:70px;}
+  .hint{font-size:12px; color:var(--muted); margin-top:4px;}
+  .rate-bar{height:8px; background:#e5e7eb; border-radius:4px; overflow:hidden; flex:1; min-width:60px;}
+  .rate-fill{height:100%; border-radius:4px;}
+  details summary{cursor:pointer;}
+  /* 登录遮罩 */
+  #login-mask{position:fixed; inset:0; background:#eef2f7; display:flex; align-items:center; justify-content:center; z-index:100;}
+  .login-box{background:#fff; border:1px solid var(--border); border-radius:14px; padding:32px; width:340px; box-shadow:0 10px 40px rgba(0,0,0,.08);}
+  .login-box h2{text-align:center; margin-bottom:18px;}
+  .login-box label{margin-top:10px;}
+  .login-box button{width:100%; margin-top:16px;}
+  #login-error,#signup-error{color:var(--danger); font-size:12px; min-height:16px; margin-top:8px; text-align:center;}
+  #signup-error.ok{color:var(--ok);}
+  .user-chip{display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:6px 12px;}
+  /* 错题照片 */
+  .photo-grid{display:flex; gap:8px; flex-wrap:wrap;}
+  .photo-thumb{position:relative; width:84px; height:84px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:#f3f4f6;}
+  .photo-thumb img{width:100%; height:100%; object-fit:cover; cursor:zoom-in; display:block;}
+  .photo-thumb .photo-del{position:absolute; top:2px; right:2px; width:20px; height:20px; border:none; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:20px; text-align:center; cursor:pointer; padding:0;}
+  .photo-add{width:84px; height:84px; border:1.5px dashed #9ca3af; border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; color:var(--muted); font-size:12px; text-align:center; background:#fafbfc;}
+  .photo-add:active{background:var(--primary-light);}
+  .photo-add .cam{font-size:22px; line-height:1;}
+  #photo-viewer{position:fixed; inset:0; background:rgba(0,0,0,.85); display:none; align-items:center; justify-content:center; z-index:120; cursor:zoom-out; padding:16px;}
+  #photo-viewer img{max-width:100%; max-height:100%; border-radius:8px;}
+  /* 表格横向滚动容器（手机端表格较宽时左右滑动，首列固定） */
+  .tbl-wrap{width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;}
+  .tbl-wrap .table{min-width:520px;}
+  .tbl-wrap .table th:first-child,.tbl-wrap .table td:first-child{position:sticky; left:0; background:#fff; z-index:1;}
+  .tbl-wrap .table th:first-child{background:#fafbfc;}
+  .chart-scroll{width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;}
+
+  /* ============ 手机 / 平板适配 ============ */
+  @media (max-width:768px){
+    body{font-size:15px; padding-bottom:78px; -webkit-tap-highlight-color:transparent;}
+    .container{max-width:none; padding:10px 10px 0;}
+    header{flex-direction:column; align-items:stretch; padding:6px 2px 10px; gap:8px;}
+    h1{font-size:17px;}
+    header > .flex{flex-direction:column; align-items:stretch; gap:8px;}
+    .user-chip{justify-content:space-between; padding:8px 12px;}
+    /* 底部固定导航栏 */
+    .tabs{position:fixed; left:0; right:0; bottom:0; z-index:70; border-radius:0; border:none; border-top:1px solid var(--border);
+      padding:6px 4px calc(6px + env(safe-area-inset-bottom)); gap:0; justify-content:space-around; box-shadow:0 -2px 12px rgba(0,0,0,.06);}
+    .tab{flex:1; display:flex; flex-direction:column; align-items:center; gap:2px; padding:4px 2px; font-size:11px; border-radius:8px; line-height:1.2;}
+    .tab::before{display:block; font-size:17px; line-height:1.1;}
+    .tab[data-page="entry"]::before{content:"✏️";}
+    .tab[data-page="records"]::before{content:"📅";}
+    .tab[data-page="wrong"]::before{content:"📕";}
+    .tab[data-page="stats"]::before{content:"📊";}
+    .tab[data-page="track"]::before{content:"🎯";}
+    .tab[data-page="data"]::before{content:"⚙️";}
+    .card{padding:12px; border-radius:12px; margin-bottom:10px;}
+    .card h2{font-size:15px;}
+    .grid2,.grid3{grid-template-columns:1fr; gap:10px;}
+    label{font-size:12px;}
+    /* 16px 可避免 iOS 聚焦时自动放大页面 */
+    input,select,textarea{font-size:16px; padding:10px 12px;}
+    select{width:100%;}
+    .btn{padding:10px 16px; font-size:15px; min-height:42px; width:100%;}
+    .btn.small{min-height:34px; padding:7px 12px; font-size:13px; width:auto;}
+    /* 筛选行、操作行改为纵向铺满，方便手指点按 */
+    .card > .flex, #page-wrong .flex{gap:8px;}
+    #filter-subject,#filter-status,#owner-filter{width:100% !important;}
+    /* 薄弱知识点排行：窄屏改为纵向卡片 */
+    #weak-kps .flex{flex-direction:column; align-items:stretch; gap:4px;}
+    #weak-kps b{min-width:0 !important;}
+    #weak-kps .rate-bar{width:100%;}
+    .record-item{padding:10px;}
+    .record-head{align-items:flex-start;}
+    .score-input{flex-wrap:wrap;}
+    .score-input input{flex:1 1 60px; width:auto; min-width:0;}
+    .metric .val{font-size:20px;}
+    .metric{padding:10px;}
+    .track-item{padding:10px; align-items:flex-start;}
+    .tbl-wrap .table{min-width:600px;}
+    .table th,.table td{padding:8px; font-size:13px;}
+    #chart-trend svg,#chart-rank svg{min-width:520px;}
+    #chart-trend,#chart-rank{overflow-x:auto; -webkit-overflow-scrolling:touch;}
+    .toast{top:auto; bottom:96px; width:auto; max-width:88vw; font-size:14px;}
+    /* 登录页 */
+    #login-mask{padding:16px;}
+    .login-box{width:100%; max-width:360px; padding:22px 18px; border-radius:14px;}
+    /* 顶部筛选与用户管理按钮铺满 */
+    #scope-bar .flex{flex-direction:column; align-items:stretch; gap:6px;}
+    #scope-bar select{width:100% !important;}
+    #full-editable .flex{flex-direction:column; align-items:stretch;}
+  }
+  @media (max-width:400px){
+    .tab{font-size:10px;}
+    .tab::before{font-size:16px;}
+    .metric .val{font-size:19px;}
+  }
+  /* 横屏/矮屏手机 */
+  @media (max-height:500px) and (max-width:900px){
+    body{padding-bottom:70px;}
+  }
+</style>
+</head>
+<body data-page-node-id="1c1dQurZMuVv7THuFD9xdv">
+<!-- 登录遮罩（仅在线模式显示） -->
+<div id="login-mask" style="display:none" data-page-node-id="WZGLGMC5TzVUpqE9EZjcE1">
+  <div class="login-box" data-page-node-id="5r6cSFFO2r8QAAR5olEr2O">
+    <h2 data-page-node-id="DP9HNZA8O538iidGsNR8N0">📚 每周考试成绩追踪</h2>
+    <!-- 登录 -->
+    <div id="login-pane">
+      <label data-page-node-id="lznAUIqvoz6KkDYn4u6IGG">用户名</label>
+      <input type="text" id="login-username" autocomplete="username" data-page-node-id="ga3Vi9fITFLhFP7ewzug9q">
+      <label data-page-node-id="AxCDLhnI50Y603F2XmRdeB">密码</label>
+      <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()" data-page-node-id="FG4Wq6l1xSKO0RPuZMmvoY">
+      <div id="login-error" data-page-node-id="9H9upsOMEeULNgFWODnuDB"></div>
+      <button class="btn" onclick="login()" data-page-node-id="VpIf6arPlOpGK6hFguGbPf">登 录</button>
+      <p class="hint" style="text-align:center; margin-top:10px" id="signup-entry-wrap" data-page-node-id="KMgWrxmTeFDHvpcSApwr1F">还没有账号？<a href="javascript:void(0)" onclick="showSignup()" style="color:var(--primary); font-weight:600">自主注册</a>（需管理员审批）</p>
+    </div>
+    <!-- 自主注册 -->
+    <div id="signup-pane" style="display:none">
+      <label>姓名（真实姓名，将显示在成绩记录中）</label>
+      <input type="text" id="reg-name" placeholder="如：白凌熙" oninput="onRegNameInput()">
+      <label style="margin-top:8px">用户名（按姓名拼音首字母自动生成，也可修改）</label>
+      <input type="text" id="reg-username" placeholder="如：blx" oninput="regUserTouched=true" autocomplete="off">
+      <label style="margin-top:8px">学校（选填）</label>
+      <input type="text" id="reg-school" placeholder="如：实验小学">
+      <label style="margin-top:8px">年级（每学年 9 月自动升一级）</label>
+      <select id="reg-grade"></select>
+      <label style="margin-top:8px">密码（至少 4 位）</label>
+      <input type="password" id="reg-password" autocomplete="new-password">
+      <label style="margin-top:8px">确认密码</label>
+      <input type="password" id="reg-password2" autocomplete="new-password" onkeydown="if(event.key==='Enter')submitSignup()">
+      <div id="signup-error"></div>
+      <button class="btn" onclick="submitSignup()">提交注册申请</button>
+      <p class="hint" style="text-align:center; margin-top:10px">提交后需<b>管理员审批</b>，通过后即可用该用户名登录</p>
+      <p class="hint" style="text-align:center; margin-top:6px"><a href="javascript:void(0)" onclick="showLoginPane()" style="color:var(--primary)">← 返回登录</a></p>
+    </div>
+  </div>
+</div>
+
+<div class="container" id="app" style="display:none" data-page-node-id="FZGdGLTQODGVT5P9Eh2mqA">
+  <header data-page-node-id="KMbEVXrCoNfY9kDdClg2WI">
+    <h1 data-page-node-id="hGbWvHz08Aec2ukh9lYRSK">📚 每周考试成绩追踪</h1>
+    <div class="flex" data-page-node-id="yTSrPPb1jh1HmRa3DEa9dL">
+      <div class="user-chip" id="user-chip" style="display:none" data-page-node-id="fi7svJbckLtz8ZhDCxaMCi"></div>
+      <div class="tabs" data-page-node-id="2aNAIK74Uujp2k9lQ0Sjod">
+        <button class="tab active" data-page="entry" data-page-node-id="sgrsqw2C0gZWPTwNtED75w">录入</button>
+        <button class="tab" data-page="records" data-page-node-id="UDFbGgjRHhL98pTsGQ7pi4">考试记录</button>
+        <button class="tab" data-page="wrong" data-page-node-id="3m53PZmferZBcfY499tWMO">错题本</button>
+        <button class="tab" data-page="stats" data-page-node-id="s7ehZ4fbHCxZMtMW2lctzo">学情统计</button>
+        <button class="tab" data-page="track" data-page-node-id="g7A5TUtaszUR6N4ixfHJw4">追踪事项</button>
+        <button class="tab" data-page="data" data-page-node-id="9WCyUBQ37B2cjInFSZC3pM">数据管理</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 查看范围（在线模式显示） -->
+  <div class="card" id="scope-bar" style="display:none; padding:10px 16px" data-page-node-id="OlblHWaWHx3EyrtfoDVEy5">
+    <div class="flex" data-page-node-id="1puoWHlB0nHXZeYE4wBHpg">
+      <span class="muted" data-page-node-id="p4iHN2kfLGypTgMeE6diuF">查看范围：</span>
+      <select id="owner-filter" style="width:180px" onchange="setOwnerFilter(this.value)" data-page-node-id="sRpebZWVFyRMzLAMdaPRT4"></select>
+      <span class="muted" id="scope-tip" data-page-node-id="5vpQI9ZJFbh4G0Dj8K4IBE"></span>
+    </div>
+  </div>
+
+  <!-- ============ 录入 ============ -->
+  <div id="page-entry" data-page-node-id="HiVX5b54gSSlcf4duWATtQ">
+    <div class="card" data-page-node-id="ap9QEUudQVlYGjBA5gQJZl">
+      <h2 data-page-node-id="nAQepWKJ7G4feyKv243VP0">📝 新增考试记录 <span id="edit-mode-tip" style="display:none; font-size:12px; font-weight:normal; color:var(--warn)" data-page-node-id="I6xhse0jEs4ipKqBViPMB3">（正在编辑，保存后原地更新）<button class="btn small ghost" onclick="cancelEditExam()" style="margin-left:6px" data-page-node-id="pgaFjX8JGqy904TRk8hmpv">取消编辑</button></span></h2>
+      <div class="grid2" data-page-node-id="Ec3lVtXKy0dmXf1xJGDUOo">
+        <div data-page-node-id="88y843TzMm3navQJQILtlX">
+          <label data-page-node-id="Itm8SaSG4PLq1UneFryBLE">考试日期</label>
+          <input type="date" id="exam-date" data-page-node-id="zYsujYOJ0AL2Al4kBqi1yr">
+          <label style="margin-top:8px" data-page-node-id="TaFZEyFIyq8EMFnf6YNMOy">周次标签（同一次考试所有人填同一个标签，如"第3周"，记录将合并对比）</label>
+          <input type="text" id="exam-week" placeholder="第3周" data-page-node-id="gfCei7lVVdXYt8ZFgeRTGk">
+          <div id="exam-owner-wrap" style="display:none; margin-top:8px" data-page-node-id="TT0lKnwCZs3RgpBDn4eAhH">
+            <label data-page-node-id="kkp0ptofV3RFqJDzSoYjLE">记录归属（管理员可选）</label>
+            <select id="exam-owner" data-page-node-id="xMJNNe6JSiO1Nh14bHqVLa"></select>
+          </div>
+        </div>
+        <div data-page-node-id="PwDsYu8Eda39HE8wKBymvn">
+          <label data-page-node-id="6FxspYRnFpkBFQfoBGwShz">备注（选填）</label>
+          <textarea id="exam-note" rows="3" placeholder="本次考试范围、特殊情况等"></textarea>
+        </div>
+      </div>
+      <div class="grid3" style="margin-top:12px" id="score-inputs" data-page-node-id="K6EJKsFhzrzU2dx74pxb8B"></div>
+      <div class="flex" style="margin-top:12px; justify-content:flex-end" data-page-node-id="bJPMjK3YvbsV3kzUiMFESX">
+        <button class="btn" id="exam-save-btn" onclick="saveExam()" data-page-node-id="eTgRWYnCohrphB8jGaxgpK">保存考试记录</button>
+      </div>
+    </div>
+
+    <div class="card" data-page-node-id="lZkPlGUigYD3dqCy9tEZDX">
+      <h2 data-page-node-id="zQsnkmnfJexAOA2VqERc6F">❌ 新增错题</h2>
+      <div class="grid2" data-page-node-id="FNKsCEA4hpzbb1BS9mZloz">
+        <div data-page-node-id="AwWlzQB3DtYAs46EiVegQr">
+          <label data-page-node-id="F97cMrFSKixHKSL7DxjtlN">所属考试</label>
+          <select id="wrong-exam" data-page-node-id="bxISZg0GmeWBfuPDvMjvFv"></select>
+          <label style="margin-top:8px" data-page-node-id="dO3dKKEqvwS1Cc214xetHL">科目</label>
+          <select id="wrong-subject" data-page-node-id="BcFR5pKfs6VOaALhdAHPUd">
+            <option value="chinese" data-page-node-id="ZSD3n5DThbObcB7hVPa3tl">语文</option><option value="math" data-page-node-id="ci9HRpkITAvdewdKLIZVx1">数学</option><option value="english" data-page-node-id="cWtEWg87QYmiJK7Q7fi2nP">英语</option>
+          </select>
+          <label style="margin-top:8px" data-page-node-id="X93fx2QNyQkW9Y0G38irMt">题号/位置</label>
+          <input type="text" id="wrong-no" placeholder="如：第15题 / 阅读第2篇" data-page-node-id="4rChhZuD7BQFwEptaIJxFS">
+          <div id="wrong-owner-wrap" style="display:none; margin-top:8px" data-page-node-id="ikm7xK2erBbn4kf9PF4D50">
+            <label data-page-node-id="I3WFl7NOU19sUKAKV84dvW">记录归属（管理员可选）</label>
+            <select id="wrong-owner" data-page-node-id="w0Aixsk7THG634pPxSkGaZ"></select>
+          </div>
+        </div>
+        <div data-page-node-id="YhL21pMSnJal3Y4Zo29Tom">
+          <label data-page-node-id="ygR22OyJe77L6IgAJHmH2P">知识点</label>
+          <input type="text" id="wrong-kp" placeholder="如：一元一次方程 / 时态" data-page-node-id="ZCDkvs8FPOwIANGRODQAwL">
+          <label style="margin-top:8px" data-page-node-id="7nF5oTP3YZkRY4Gtg7MY8d">错误类型（六类归因）</label>
+          <select id="wrong-type" data-page-node-id="ZF47pL99j0NwvBuMohD3zR">
+            <option value="知识性错误" data-page-node-id="4FAGacg39BYT1KRG82onq8">知识性错误（概念记错、知识断层）</option>
+            <option value="方法/思维错误" data-page-node-id="IlZGqyJhMS3C6dtTFRXm1B">方法/思维错误（不会转化、缺策略）</option>
+            <option value="审题/信息提取错误" data-page-node-id="w4GgVfQTHofVu0Wz2Y3Uts">审题/信息提取错误（漏条件、抓错词）</option>
+            <option value="表达/规范错误" data-page-node-id="ry2wlAJ7FUYMzTSbplTXis">表达/规范错误（会做但过程不规范丢分）</option>
+            <option value="非智力因素" data-page-node-id="HCBVOMbmYMPvQyM92DPQbI">非智力因素（粗心、时间分配）</option>
+            <option value="教学环节归因" data-page-node-id="3Uo6WTzek9Jr4Nejx3VdVY">教学环节归因（没讲到/没配练习）</option>
+          </select>
+          <label style="margin-top:8px" data-page-node-id="sr4NZg8eCF0MBenckXxHDB">错因描述（选填）</label>
+          <input type="text" id="wrong-desc" placeholder="具体错在哪里" data-page-node-id="QPuA8uADdms67T8B2qBun1">
+        </div>
+      </div>
+      <div style="margin-top:12px">
+        <label>题目照片（选填，可拍照或从相册选择，最多 3 张，自动压缩存储）</label>
+        <div class="photo-grid" id="wrong-photo-grid"></div>
+        <input type="file" id="wrong-photos" accept="image/*" multiple style="display:none" onchange="addWrongPhotos(this.files)">
+        <div class="hint" id="photo-tip">点击方框拍照或选择图片，照片会自动压缩后保存</div>
+      </div>
+      <div class="flex" style="margin-top:12px; justify-content:flex-end" data-page-node-id="Icj0YOXmC5SELJECKUWdI6">
+        <button class="btn" onclick="saveWrong()" data-page-node-id="02D8V7syalVlNS6ySieURt">保存错题</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ 考试记录 ============ -->
+  <div id="page-records" style="display:none" data-page-node-id="mHDytSmqkvjsFm3GuzdCUF">
+    <div class="card" data-page-node-id="xB5UNBKQ2mEBlzpI0dkbhQ">
+      <h2 data-page-node-id="HN1gR7SLo9Uca2QkIVp2u9">📋 考试记录时间线</h2>
+      <div id="records-list" data-page-node-id="0toe8wkzD4xMHSABN1rs2j"></div>
+    </div>
+  </div>
+
+  <!-- ============ 错题本 ============ -->
+  <div id="page-wrong" style="display:none" data-page-node-id="0iJL2BxQE7iGFlpKuN02wa">
+    <div class="card" data-page-node-id="eIsV81LCjji6z2pGcNXlmy">
+      <h2 data-page-node-id="iBXOxh7GHMyL1fyylpiMsN">❌ 错题本 <span class="muted" id="wrong-count" data-page-node-id="qskLDYBCHB2ePmpAkgODfl"></span></h2>
+      <div class="flex" style="margin-bottom:12px" data-page-node-id="DfBeoms1k44pHdKfZAP9EY">
+        <select id="filter-subject" style="width:140px" onchange="renderWrongBook()" data-page-node-id="Y6wh2JZenTL3JSJcYQnV0d">
+          <option value="" data-page-node-id="UFlSMI7xbgX26qQjf43Au8">全部科目</option>
+          <option value="chinese" data-page-node-id="lPMgAOumz9qt9AQzSfaSul">语文</option><option value="math" data-page-node-id="QyqBngkWfmx9Yq4TajDgWl">数学</option><option value="english" data-page-node-id="PEBGpnXKFf4MeCQkau25Es">英语</option>
+        </select>
+        <select id="filter-status" style="width:150px" onchange="renderWrongBook()" data-page-node-id="FA50ehhAx7Oj9eFnLRGETH">
+          <option value="" data-page-node-id="KoEVhXkusX8GHZdUoZJCjA">全部状态</option>
+          <option value="0" data-page-node-id="oJJ5YmxbGCvfeoo5EWHa45">未订正</option><option value="1" data-page-node-id="xqgM8GOTi3mQaVzyxQ66H7">已订正未重做</option><option value="2" data-page-node-id="PH3ZPnJCviyFl78BndCLFg">重做通过</option>
+        </select>
+      </div>
+      <div id="wrong-list" data-page-node-id="7ZUwUPoE0RVAWbWForWGNq"></div>
+    </div>
+  </div>
+
+  <!-- ============ 学情统计 ============ -->
+  <div id="page-stats" style="display:none" data-page-node-id="BxEGnR3NMylWkz06DZssLy">
+    <div class="card" data-page-node-id="liBQi39T6lZt7VuHfJGxpJ">
+      <h2 data-page-node-id="CEEFGQwcOAI2dUULQnyVbU">📊 整体指标</h2>
+      <div class="grid3" id="overall-metrics" data-page-node-id="ObI3VQ9TgipvGwzy7AP0wt"></div>
+    </div>
+    <div class="card" data-page-node-id="KPF8IUQZ2B2LxMk7fZQYQW">
+      <h2 data-page-node-id="8FiJeMZSeEws0UQopee5ty">📈 成绩趋势（得分率 %）</h2>
+      <div id="chart-trend" data-page-node-id="ubT4yLNPQEF7JeywCjTXzx"></div>
+      <p class="hint" data-page-node-id="o60er7qSuvDtiz2WAYzgDJ">得分率 = 实际得分 ÷ 满分，消除不同考试满分差异后可比。判读：≥85% 掌握良好｜70-85% 基本掌握｜50-70% 薄弱｜&lt;50% 严重薄弱需重讲。</p>
+    </div>
+    <div class="grid2" data-page-node-id="KjipIAwmvduHbvFqHPC92I">
+      <div class="card" data-page-node-id="3XxAgZO4XyB26CXBYa6QtW">
+        <h2 data-page-node-id="lfj7frcvyKtHbhWj3yG2We">🏅 排名变化</h2>
+        <div id="chart-rank" data-page-node-id="2vI3njgYH7pT6YUEuaGJTz"></div>
+      </div>
+      <div class="card" data-page-node-id="kk8ypFDdEUNe1Ac5D4kob4">
+        <h2 data-page-node-id="rxstYEVMK4ivt5EK8riqkZ">🏷️ 错题类型分布</h2>
+        <div id="chart-wrongtype" data-page-node-id="inWsgf56bFDIROI5NzpWsA"></div>
+      </div>
+    </div>
+    <div class="card" data-page-node-id="Y0HesYkqFZBULpvrCKxuto">
+      <h2 data-page-node-id="WGazruRO0VeN5lrozXhXZd">🎯 薄弱知识点排行（按错题次数）</h2>
+      <div id="weak-kps" data-page-node-id="SDZX3xT5cGn1OxUvUaHR5a"></div>
+    </div>
+  </div>
+
+  <!-- ============ 追踪事项 ============ -->
+  <div id="page-track" style="display:none" data-page-node-id="FTG6KrmR2EvjuzrYuqG8Sv">
+    <div class="card" data-page-node-id="WG1gthRFCC2q5FYehtTIwH">
+      <h2 data-page-node-id="2Gm8Aj3fVp4KTF6EJTsXY5">✅ 追踪事项</h2>
+      <div class="flex" style="margin-bottom:12px" data-page-node-id="xFXxCGnIXAF8VYa70dZuvg">
+        <input type="text" id="track-text" placeholder="手动添加追踪事项，如：本周重讲一元一次方程并配3道变式练习" style="flex:1" data-page-node-id="DNBnBr5rIHQE7XFql72qS2">
+        <button class="btn" onclick="addTrack()" data-page-node-id="GuxBBNn1rbNqHT13Sskak2">添加</button>
+        <button class="btn ghost" onclick="autoGenTracks()" data-page-node-id="1D62XLYQbcDDoIhHkkD84z">从错题本自动生成</button>
+      </div>
+      <p class="hint" style="margin-bottom:10px" data-page-node-id="ef8a6PeSK0zgtRGz7iAfyq">建议格式：做什么 → 给谁做 → 何时验证。追踪事项归属本人，只有本人（或管理员）能勾选和删除。</p>
+      <div id="track-list" data-page-node-id="ouUHRP3fd1GzaXpg7QQl2j"></div>
+    </div>
+  </div>
+
+  <!-- ============ 数据管理 ============ -->
+  <div id="page-data" style="display:none" data-page-node-id="xwLJL733f1rGZJ4tXK5E0X">
+    <div class="card" id="my-profile-card" style="display:none">
+      <h2>🙋 我的资料（学校 / 年级）</h2>
+      <p class="hint" style="margin-bottom:10px">年级用于区分不同学段的学生成绩；<b>每个学年（每年 9 月 1 日）会自动升一级</b>，无需手动修改。</p>
+      <div class="grid2">
+        <div>
+          <label>姓名（如需修改请联系管理员）</label>
+          <input type="text" id="my-name" readonly>
+          <label style="margin-top:8px">学校</label>
+          <input type="text" id="my-school" placeholder="如：实验小学">
+        </div>
+        <div>
+          <label>年级</label>
+          <select id="my-grade"></select>
+          <div class="hint" id="my-grade-tip" style="margin-top:6px"></div>
+        </div>
+      </div>
+      <div class="flex" style="margin-top:12px; justify-content:flex-end">
+        <button class="btn" onclick="saveMyProfile()">保存我的资料</button>
+      </div>
+    </div>
+
+    <div class="card" id="users-card" style="display:none" data-page-node-id="uh8W7yW3HzC68M0R78F53N">
+      <h2 data-page-node-id="xjk2SlqdYaI5A4c3I6Zu3Z">👥 用户管理（仅管理员）</h2>
+      <div class="grid2" style="align-items:end" data-page-node-id="gPNtqszlGev6QVn1GEZCMF">
+        <div data-page-node-id="pBF1wxDZG9u6FXgixuFYZi">
+          <label data-page-node-id="jH6TBl5zmBQwdWmAmJEQYn">用户名（登录用，2-20位字母/数字/下划线）</label>
+          <input type="text" id="new-username" data-page-node-id="kMCDAL07E6FgGFuhbupHoj">
+          <label style="margin-top:8px" data-page-node-id="gGsc4ObsiUAO2ESYt7Q6zJ">姓名（显示用）</label>
+          <input type="text" id="new-name" oninput="onNewNameInput()" data-page-node-id="4G1O70boSD1BagL4biHFHY">
+          <label style="margin-top:8px">学校（选填）</label>
+          <input type="text" id="new-school" placeholder="如：实验小学">
+          <label style="margin-top:8px">年级（每学年 9 月自动升一级）</label>
+          <select id="new-grade"></select>
+        </div>
+        <div data-page-node-id="O3BcmXYLImBdgw3Tsieo7j">
+          <label data-page-node-id="wlyb70HW1C5nCJLNRdFiaY">初始密码（至少4位）</label>
+          <input type="text" id="new-password" data-page-node-id="OkIFMw6eUlo7Es1UTAX4YD">
+          <label style="margin-top:8px" data-page-node-id="A9OuhkGSI0Sa5ouk0ikhEi">角色</label>
+          <select id="new-role" data-page-node-id="kUH4QQ95i8qs6FYv3k0ZLW"><option value="member" data-page-node-id="vALZrsYRiCxd87ZwvFePrY">普通成员（只能改自己的数据）</option><option value="admin" data-page-node-id="8VJXqFTNGJrAK3kwY619mC">管理员（可改所有人数据）</option></select>
+        </div>
+      </div>
+      <div class="flex" style="margin-top:12px; justify-content:flex-end" data-page-node-id="Q29vO0F0Ai4SW8Ip5QobMc">
+        <button class="btn" onclick="addUser()" data-page-node-id="h0g5zSg48btTnUUIdiXeQz">添加用户</button>
+      </div>
+      <div id="users-list" style="margin-top:14px" data-page-node-id="WOf0HlKcTK0Wv88oAHZllS"></div>
+    </div>
+
+    <div class="card" id="signup-card" style="display:none">
+      <h2>📨 注册申请审批（仅管理员）<span class="muted" id="pending-count"></span></h2>
+      <div class="flex" style="margin-bottom:10px">
+        <label class="flex" style="gap:6px; align-items:center; font-size:13px; margin:0">
+          <input type="checkbox" id="allow-signup" onchange="toggleSignup(this.checked)" style="width:18px;height:18px">
+          <span>允许访客自主注册（提交后仍需你审批通过才能登录）</span>
+        </label>
+      </div>
+      <div id="pending-list"></div>
+      <p class="hint">把本站链接发给学生/家长，他们可以自己注册；提交后在此点「通过」即开通账号（默认普通成员，只能改自己的数据）。</p>
+    </div>
+
+    <div class="card" data-page-node-id="lGQD2zxgwJf5tq5QIaPij8">
+      <h2 data-page-node-id="W8TAMToHbBGKh4qFbDUC3C">☁️ 云端同步状态</h2>
+      <div id="sync-online-panel" data-page-node-id="dfjkzJzGmaLU2M1Jza4ye4">
+        <div class="flex" data-page-node-id="GNRrCPSckz3byLv6cm0IQi">
+          <button class="btn ghost" onclick="syncNow(false)" data-page-node-id="lzoGk5PSvgxBkxhaWWdZ7l">立即同步</button>
+          <button class="btn ghost" onclick="logout()" data-page-node-id="R1F9HCCb1Q320Goexot3Wu">退出登录</button>
+          <span id="sync-status" class="muted" data-page-node-id="8rpIc05kGIdjNje99VwjfO"></span>
+        </div>
+      </div>
+      <div id="sync-offline-tip" style="display:none" data-page-node-id="mmr9qRAe6GOjIlKGyxkGbc">
+        <p class="hint" data-page-node-id="HtClXNYp2LFxAfkpCnqirJ">当前为本地文件模式（file:// 打开），单机使用，无登录与多用户功能。请使用在线链接访问以启用多设备同步与多用户。</p>
+      </div>
+    </div>
+
+    <div class="card" data-page-node-id="vRHM6yeoXkj5DgNCuhrKxO">
+      <h2 data-page-node-id="blz6kg8kO9xSzF5YGlAOGp">💾 数据备份与恢复</h2>
+      <p class="hint" style="margin-bottom:12px" data-page-node-id="mL7LuoFhT2fiVh8DPyuLrx">在线模式下数据实时保存在服务器，无需手动备份；JSON 导出可用于个人留存，成绩明细可导出 CSV 用 Excel 打开。</p>
+      <div class="flex" data-page-node-id="PxwPDn2V382aFCGNNHkUMX">
+        <button class="btn" onclick="exportJSON()" data-page-node-id="2Oy51eFxfLYINEk0aJpFGU">导出备份 (JSON)</button>
+        <button class="btn ghost" onclick="document.getElementById('import-file').click()" data-page-node-id="U3r2eA3Rf9g32jlVaeUJLO">导入备份</button>
+        <input type="file" id="import-file" accept=".json" style="display:none" onchange="importJSON(this)" data-page-node-id="6xFYIWtJOfIcRPtakszcC7">
+        <button class="btn ghost" onclick="exportCSV()" data-page-node-id="5U7IKjQZUpOqSAUzaKkZEQ">导出成绩明细 (CSV)</button>
+      </div>
+    </div>
+
+    <div class="card" data-page-node-id="ZeFhBaTzEVanmHKumU20rn">
+      <h2 data-page-node-id="b0EGYQKxoJAwj2oGj9fGCB">⚙️ 科目满分设置</h2>
+      <div id="full-editable" data-page-node-id="Rz0Bxvcbzr5bh3bvCoks5Q">
+        <div class="grid3" data-page-node-id="GvTQhCilQEbOVZW4rxZCCi">
+          <div data-page-node-id="APT0ItVbuhMh2MkCwrYHfI"><label data-page-node-id="E0RQTDDQRQBp7eBh50qxYv">语文满分</label><input type="number" id="full-chinese" min="1" data-page-node-id="pF0Cda9ObUADU4TY8OeOJD"></div>
+          <div data-page-node-id="nYmSJUdzbayqE62rBBViro"><label data-page-node-id="E2JDnKhMEVmxkp6xKYOIMU">数学满分</label><input type="number" id="full-math" min="1" data-page-node-id="KL2qBwFl6bSd9W9FHUnmXm"></div>
+          <div data-page-node-id="V5Z0j4FivgysANi5EJaUjr"><label data-page-node-id="72NMMMtOquJo4rdNdDEtTt">英语满分</label><input type="number" id="full-english" min="1" data-page-node-id="PZH8rF4tZzPIRDh1gG2hRl"></div>
+        </div>
+        <div class="flex" style="margin-top:12px; justify-content:flex-end" data-page-node-id="5DaqjrNL3dsPxui8NFQfR9">
+          <button class="btn" onclick="saveFull()" data-page-node-id="DxhbmZ8DURMbArRCe4KF89">保存设置</button>
+        </div>
+      </div>
+      <p class="hint" id="full-readonly-tip" style="display:none" data-page-node-id="aCJTHeqV6Az6NceaVZtl5Q">满分设置仅管理员可修改。</p>
+    </div>
+
+    <div class="card" id="clear-card" style="display:none" data-page-node-id="qrcatRb0kVQpjAShQrTKFt">
+      <h2 data-page-node-id="fJkmuTDqxbDBdS0AtnBHlr">🗑️ 清空数据（仅管理员）</h2>
+      <p class="hint" style="margin-bottom:10px" data-page-node-id="FaM3EHlYyDYgYQUWMEtWFO">清空所有人的考试记录、错题与追踪事项（用户账号保留），不可恢复！请先导出备份。</p>
+      <button class="btn danger" onclick="clearAll()" data-page-node-id="6UJMNNfw4EkI8aarWV91ji">清空全部数据</button>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" data-page-node-id="PZCspJl4byAL291oLO5ELj"></div>
+  <div id="photo-viewer" onclick="this.style.display='none'"><img id="photo-viewer-img" alt="题目照片大图"></div>
+</div>
+
+<script>
+/* ================= 数据层 ================= */
+const SKEY = 'weekly_exam_tracker_v3';
+const DEFAULT_STATE = { exams:[], wrongs:[], tracks:[], full:{chinese:100, math:100, english:100}, users:[], registrations:[], settings:{allowSignup:true}, seq:1 };
+let state = load();
+let me = null;            // 当前登录用户 {username,name,role}，本地模式为 null
+let ownerFilter = '';     // 查看范围筛选（'' = 全部）
+let editingExamId = null;
+let editingWrongId = null;
+const SYNC = { online: location.protocol === 'http:' || location.protocol === 'https:', timer:null, pushTimer:null };
+
+function load(){ try{ return Object.assign({}, DEFAULT_STATE, JSON.parse(localStorage.getItem(SKEY)||'{}')); }catch(e){ return {...DEFAULT_STATE}; } }
+function saveCache(){
+  try{ localStorage.setItem(SKEY, JSON.stringify(state)); }
+  catch(e){
+    // 照片较多导致超出本地容量时：云端照常保存，本地缓存去掉照片后降级存储
+    try{
+      const slim = JSON.parse(JSON.stringify(state));
+      (slim.wrongs||[]).forEach(w=>{ delete w.photos; });
+      localStorage.setItem(SKEY, JSON.stringify(slim));
+    }catch(e2){}
+  }
+}
+function uid(){ return 'id' + (state.seq = (state.seq||1) + 1) + '_' + Date.now() + '_' + Math.floor(Math.random()*1e4); }
+const SUB = { chinese:{name:'语文', color:'#dc2626'}, math:{name:'数学', color:'#2563eb'}, english:{name:'英语', color:'#059669'} };
+function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.style.display='block'; setTimeout(()=>t.style.display='none',2600); }
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+function rateCls(r){ if(r>=85) return {cls:'green', label:'掌握良好'}; if(r>=70) return {cls:'blue', label:'基本掌握'}; if(r>=50) return {cls:'orange', label:'薄弱'}; return {cls:'red', label:'严重薄弱'}; }
+
+/* ================= 权限 ================= */
+function isAdmin(){ return me && me.role === 'admin'; }
+function canEdit(owner){ return !me || isAdmin() || owner === me.username; }
+function userName(u){ const x = (state.users||[]).find(v=>v.username===u); return x ? x.name : (u||''); }
+/* ---- 学校 / 年级 ---- */
+const GRADES = ['一年级','二年级','三年级','四年级','五年级','六年级','初一','初二','初三','高一','高二','高三'];
+const DEFAULT_GRADE = '六年级';                       // 新账号默认年级（另一个常用年级：初一）
+const COMMON_GRADES = ['六年级','初一'];              // 常用年级，置于下拉最前
+function userObj(u){ return (state.users||[]).find(v=>v.username===u) || (me && me.username===u ? me : null); }
+function userGrade(u){ const o=userObj(u); return o ? (o.grade||'') : ''; }
+function userSchool(u){ const o=userObj(u); return o ? (o.school||'') : ''; }
+function userLabel(u){ const g=userGrade(u); return userName(u) + (g ? '（'+g+'）' : ''); }
+/* 年级下拉选项：常用年级（六年级 / 初一）排在最前，其余按学级顺序；includeNone 用于家长/老师等不设年级的账号 */
+function gradeOptions(sel, includeNone){
+  const list = COMMON_GRADES.concat(GRADES.filter(g=>!COMMON_GRADES.includes(g)));
+  return (includeNone ? '<option value=""'+(!sel?' selected':'')+'>不设置（家长/老师）</option>' : '')
+    + list.map(g=>`<option value="${g}"${g===sel?' selected':''}>${g}${COMMON_GRADES.includes(g)?'（常用）':''}</option>`).join('');
+}
+function fillGradeSelect(id, sel, includeNone){
+  const el = document.getElementById(id);
+  if(el) el.innerHTML = gradeOptions((sel===undefined||sel===null)?DEFAULT_GRADE:sel, includeNone);
+}
+/* 界面提示：下一次学年自动升级的年级与时间 */
+function nextGradeTip(u){
+  const o = userObj(u);
+  if(!o || !o.grade) return '';
+  if(o.grade === '高三') return '已到最高年级（高三）';
+  return '下次学年（' + (o.nextGradeDate||'') + '）将自动升为：<b>' + esc(o.nextGrade||'') + '</b>';
+}
+function fArr(kind){
+  const arr = state[kind]||[];
+  return ownerFilter ? arr.filter(x=>x.owner===ownerFilter) : arr;
+}
+function setOwnerFilter(v){ ownerFilter = v; renderRecords(); renderWrongBook(); renderTracks(); renderStats(); }
+
+/* ================= API ================= */
+function authToken(){ return localStorage.getItem('auth_token')||''; }
+async function api(path, body, method){
+  const resp = await fetch(path, {
+    method: method || (body?'POST':'GET'),
+    headers: { 'Content-Type':'application/json', 'x-auth': authToken() },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  const d = await resp.json().catch(()=>({error:'响应解析失败'}));
+  if(resp.status===401){ showLogin('登录已失效，请重新登录'); throw new Error(d.error||'未登录'); }
+  if(!resp.ok) throw new Error(d.error||('请求失败 '+resp.status));
+  return d;
+}
+function applyServerState(d){
+  state.exams = d.exams||[]; state.wrongs = d.wrongs||[]; state.tracks = d.tracks||[];
+  state.full = d.full||state.full; state.users = d.users||state.users;
+  if(d.settings) state.settings = d.settings;
+  if(d.registrations) state.registrations = d.registrations;
+  saveCache();
+  rerenderAll();
+}
+function rerenderAll(){
+  renderScoreInputs(); refreshExamSelect(); refreshOwnerUI();
+  renderRecords(); renderWrongBook(); renderTracks(); renderStats(); renderDataPage();
+}
+
+/* ================= 登录 ================= */
+function showLogin(err){
+  document.getElementById('app').style.display='none';
+  document.getElementById('login-mask').style.display='flex';
+  document.getElementById('login-error').textContent = err||'';
+}
+async function login(){
+  const btn = document.querySelector('#login-mask .btn'); btn.disabled=true;
+  document.getElementById('login-error').textContent='';
+  try{
+    const resp = await fetch('/api/login', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ username: document.getElementById('login-username').value.trim(), password: document.getElementById('login-password').value }) });
+    const d = await resp.json();
+    if(!resp.ok) throw new Error(d.error||'登录失败');
+    localStorage.setItem('auth_token', d.token);
+    localStorage.setItem('auth_me', JSON.stringify(d.user));
+    me = d.user;
+    await refreshFromServer();
+    enterApp();
+  }catch(e){ document.getElementById('login-error').textContent = e.message; }
+  btn.disabled=false;
+}
+async function refreshFromServer(){
+  const d = await api('/api/state');
+  applyServerState(d);
+}
+
+/* ================= 自主注册（提交申请 → 管理员审批） ================= */
+let regUserTouched = false;   // 用户是否手动改过用户名
+/* 拼音首字母锚点（按拼音顺序），用浏览器内置的中文排序规则把汉字映射到声母 */
+const PY_ANCHORS = [['a','阿'],['b','八'],['c','擦'],['d','搭'],['e','蛾'],['f','法'],['g','噶'],['h','哈'],
+  ['j','击'],['k','喀'],['l','垃'],['m','妈'],['n','拿'],['o','哦'],['p','啪'],['q','期'],
+  ['r','然'],['s','撒'],['t','塌'],['w','挖'],['x','昔'],['y','压'],['z','匝']];
+let pyCollator = null;
+try{ pyCollator = new Intl.Collator('zh-Hans-u-co-pinyin'); }catch(e){ pyCollator = null; }
+function charInitial(ch){
+  if(/[a-zA-Z]/.test(ch)) return ch.toLowerCase();
+  if(/[0-9_]/.test(ch)) return ch;
+  if(!pyCollator) return '';
+  let hit = '';
+  for(const [letter, anchor] of PY_ANCHORS){
+    if(pyCollator.compare(ch, anchor) >= 0) hit = letter; else break;
+  }
+  return hit;
+}
+function nameToUsername(name){
+  let out = '';
+  for(const ch of String(name||'')){ out += charInitial(ch); }
+  return out;
+}
+function onRegNameInput(){
+  if(regUserTouched) return;
+  const u = nameToUsername(document.getElementById('reg-name').value).slice(0,12);
+  document.getElementById('reg-username').value = u;
+}
+/* 管理员手工添加用户时，同样按姓名自动提示用户名 */
+function onNewNameInput(){
+  const un = document.getElementById('new-username');
+  if(un.dataset.touched) return;
+  un.value = nameToUsername(document.getElementById('new-name').value).slice(0,12);
+}
+document.addEventListener('input', e=>{
+  if(e.target && e.target.id === 'new-username') e.target.dataset.touched = '1';
+});
+function showSignup(){
+  document.getElementById('login-pane').style.display='none';
+  document.getElementById('signup-pane').style.display='';
+  document.getElementById('login-error').textContent='';
+  document.getElementById('signup-error').textContent='';
+  regUserTouched = !!document.getElementById('reg-username').value;
+  document.getElementById('reg-name').focus();
+}
+function showLoginPane(){
+  document.getElementById('signup-pane').style.display='none';
+  document.getElementById('login-pane').style.display='';
+  document.getElementById('signup-error').textContent='';
+  document.getElementById('login-username').focus();
+}
+async function submitSignup(){
+  const name = document.getElementById('reg-name').value.trim();
+  const username = document.getElementById('reg-username').value.trim().toLowerCase();
+  const school = document.getElementById('reg-school').value.trim();
+  const grade = document.getElementById('reg-grade').value;
+  const pw = document.getElementById('reg-password').value;
+  const pw2 = document.getElementById('reg-password2').value;
+  const errBox = document.getElementById('signup-error');
+  errBox.className=''; errBox.textContent='';
+  if(!name){ errBox.textContent='请填写姓名'; return; }
+  if(!/^[a-z0-9_]{2,20}$/.test(username)){ errBox.textContent='用户名需为 2-20 位字母/数字（小写）'; return; }
+  if(pw.length<4){ errBox.textContent='密码至少 4 位'; return; }
+  if(pw!==pw2){ errBox.textContent='两次输入的密码不一致'; return; }
+  const btn = document.querySelector('#signup-pane .btn'); btn.disabled = true;
+  try{
+    const resp = await fetch('/api/register', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ name, username, password: pw }) });
+    const d = await resp.json();
+    if(!resp.ok) throw new Error(d.error||'提交失败');
+    errBox.className='ok';
+    errBox.textContent = '申请已提交 ✓ 请等待管理员审批，通过后即可用「' + d.username + '」登录';
+    ['reg-name','reg-username','reg-password','reg-password2'].forEach(id=>document.getElementById(id).value='');
+    regUserTouched = false;
+    toast('注册申请已提交，等待管理员审批');
+    setTimeout(()=>{ if(document.getElementById('signup-pane').style.display!=='none') showLoginPane(); }, 2600);
+  }catch(e){ errBox.textContent = e.message; }
+  btn.disabled = false;
+}
+function enterApp(){
+  document.getElementById('login-mask').style.display='none';
+  document.getElementById('app').style.display='';
+  updateUserChip(); rerenderAll();
+  syncNow(true);
+  if(!SYNC.timer){ SYNC.timer = setInterval(()=>syncNow(true), 20000); }
+  window.addEventListener('focus', ()=>{ if(me) syncNow(true); });
+}
+function logout(){
+  localStorage.removeItem('auth_token'); localStorage.removeItem('auth_me');
+  me = null; clearInterval(SYNC.timer); SYNC.timer=null;
+  showLogin('');
+}
+function updateUserChip(){
+  const chip = document.getElementById('user-chip');
+  if(!me){ chip.style.display='none'; return; }
+  chip.style.display='flex';
+  chip.innerHTML = `<span>👤 <b>${esc(me.name)}</b>${me.grade?` <span class="badge blue">${esc(me.grade)}</span>`:''}${me.school?` <span class="muted" style="font-size:12px">${esc(me.school)}</span>`:''}${isAdmin()?' <span class="badge orange">管理员</span>':' <span class="badge gray">成员</span>'}</span>
+    <button class="btn small ghost" onclick="logout()">退出</button>`;
+}
+
+/* ================= Tab 切换 ================= */
+document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');
+  ['entry','records','wrong','stats','track','data'].forEach(p=>document.getElementById('page-'+p).style.display = (p===t.dataset.page)?'':'none');
+  if(t.dataset.page==='records') renderRecords();
+  if(t.dataset.page==='wrong') renderWrongBook();
+  if(t.dataset.page==='stats') renderStats();
+  if(t.dataset.page==='track') renderTracks();
+  if(t.dataset.page==='data') renderDataPage();
+}));
+
+/* ================= 云端提交（带权限校验） ================= */
+async function commit(kind, record){
+  if(me){
+    const d = await api('/api/op', { op:'upsert', kind, record });
+    applyServerState(d);
+  } else {
+    const arr = state[kind]; const i = arr.findIndex(x=>x.id===record.id);
+    if(i>=0) arr[i]=record; else arr.unshift(record);
+    saveCache();
+  }
+  rerenderAll();
+}
+async function removeRec(kind, id){
+  if(me){
+    const d = await api('/api/op', { op:'delete', kind, id });
+    applyServerState(d);
+  } else {
+    state[kind] = state[kind].filter(x=>x.id!==id);
+    saveCache();
+  }
+  rerenderAll();
+}
+async function syncNow(silent){
+  if(!me) return;
+  try{
+    document.getElementById('sync-status').textContent = '同步中…';
+    await refreshFromServer();
+    document.getElementById('sync-status').textContent = '✓ 已同步 ' + new Date().toLocaleTimeString('zh-CN');
+    if(!silent) toast('同步完成 ✓');
+  }catch(e){
+    document.getElementById('sync-status').textContent = '✗ ' + e.message;
+    if(!silent) toast('同步失败：' + e.message);
+  }
+}
+
+/* ================= 录入：考试 ================= */
+function ownerSelect(id, selected){
+  const opts = (state.users||[]).map(u=>`<option value="${esc(u.username)}" ${u.username===selected?'selected':''}>${esc(u.name)}${u.grade?('· '+esc(u.grade)):''}（${esc(u.username)}）</option>`).join('');
+  return `<select id="${id}">${opts}</select>`;
+}
+function renderScoreInputs(){
+  const box = document.getElementById('score-inputs');
+  // 保留当前已填写的值（自动同步重渲染时不会清掉正在编辑的内容）
+  const prev = {};
+  Object.keys(SUB).forEach(k=>['score','rank','total'].forEach(f=>{
+    const el = document.getElementById(f+'-'+k);
+    if(el) prev[f+'-'+k] = el.value;
+  }));
+  box.innerHTML = Object.keys(SUB).map(k=>`
+    <div>
+      <label><span class="subject-tag" style="background:${SUB[k].color}"></span>${SUB[k].name}成绩 / 班级排名 / 班级人数(选填)</label>
+      <div class="score-input">
+        <input type="number" id="score-${k}" step="0.5" min="0" placeholder="分数">
+        <input type="number" id="rank-${k}" min="1" placeholder="排名">
+        <input type="number" id="total-${k}" min="1" placeholder="人数">
+      </div>
+      <div class="hint">满分：${state.full[k]}</div>
+    </div>`).join('');
+  Object.keys(prev).forEach(id=>{
+    const el = document.getElementById(id);
+    if(el && prev[id]!=='' && prev[id]!=null) el.value = prev[id];
+  });
+}
+async function saveExam(){
+  const date = document.getElementById('exam-date').value;
+  if(!date){ toast('请选择考试日期'); return; }
+  const scores = {};
+  let hasAny = false;
+  Object.keys(SUB).forEach(k=>{
+    const s = document.getElementById('score-'+k).value;
+    if(s!==''){
+      hasAny = true;
+      scores[k] = {
+        score: parseFloat(s),
+        rank: document.getElementById('rank-'+k).value ? parseInt(document.getElementById('rank-'+k).value) : null,
+        total: document.getElementById('total-'+k).value ? parseInt(document.getElementById('total-'+k).value) : null
+      };
+    }
+  });
+  if(!hasAny){ toast('请至少填写一科成绩'); return; }
+  const existing = editingExamId ? state.exams.find(e=>e.id===editingExamId) : null;
+  if(editingExamId && !existing){ toast('原记录不存在'); return; }
+  const rec = {
+    id: existing ? existing.id : uid(),
+    owner: existing ? existing.owner : (isAdmin() && document.getElementById('exam-owner') ? document.getElementById('exam-owner').value : (me?me.username:'')),
+    date, week: document.getElementById('exam-week').value.trim(), note: document.getElementById('exam-note').value.trim(),
+    scores, createdAt: existing? existing.createdAt : Date.now()
+  };
+  try{ await commit('exams', rec); toast(existing?'考试记录已更新 ✓':'考试记录已保存 ✓'); }catch(e){ toast('保存失败：'+e.message); return; }
+  cancelEditExam();
+}
+function editExam(id){
+  const ex = state.exams.find(e=>e.id===id);
+  if(!ex) return;
+  if(!canEdit(ex.owner)){ toast('无权限编辑他人的记录'); return; }
+  editingExamId = id;
+  switchToEntry();
+  document.getElementById('exam-date').value = ex.date;
+  document.getElementById('exam-week').value = ex.week||'';
+  document.getElementById('exam-note').value = ex.note||'';
+  Object.keys(SUB).forEach(k=>{
+    const s = ex.scores[k];
+    document.getElementById('score-'+k).value = s? s.score : '';
+    document.getElementById('rank-'+k).value = (s&&s.rank!=null)? s.rank : '';
+    document.getElementById('total-'+k).value = (s&&s.total!=null)? s.total : '';
+  });
+  // 管理员代改时，归属下拉定位到原记录的记录人
+  const eo = document.getElementById('exam-owner');
+  if(eo) eo.value = ex.owner;
+  document.getElementById('edit-mode-tip').style.display = 'inline';
+  document.getElementById('exam-save-btn').textContent = '保存修改';
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+function cancelEditExam(){
+  editingExamId = null;
+  document.getElementById('edit-mode-tip').style.display = 'none';
+  document.getElementById('exam-save-btn').textContent = '保存考试记录';
+  ['exam-date','exam-week','exam-note'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('exam-date').value = new Date().toISOString().slice(0,10);
+  renderScoreInputs();
+}
+async function delExam(id){
+  const ex = state.exams.find(e=>e.id===id); if(!ex) return;
+  if(!canEdit(ex.owner)){ toast('无权限删除他人的记录'); return; }
+  if(!confirm('删除该次考试记录？其关联错题将保留但失去关联显示。')) return;
+  try{ await removeRec('exams', id); toast('已删除'); }catch(e){ toast('删除失败：'+e.message); }
+}
+function examTitle(e){ return e.week ? e.week + '（' + e.date + '）' : e.date; }
+function refreshExamSelect(){
+  const sel = document.getElementById('wrong-exam');
+  const cur = sel.value;
+  sel.innerHTML = state.exams.length
+    ? state.exams.map(e=>`<option value="${e.id}">${esc(examTitle(e))} · ${esc(userName(e.owner))}</option>`).join('')
+    : '<option value="">（暂无考试记录，可先不关联）</option>';
+  sel.value = cur;
+}
+function refreshOwnerUI(){
+  // 管理员在录入时可指定归属；所有人可筛选查看范围
+  const showAdminSel = isAdmin();
+  document.getElementById('exam-owner-wrap').style.display = showAdminSel?'':'none';
+  document.getElementById('wrong-owner-wrap').style.display = showAdminSel?'':'none';
+  if(showAdminSel){
+    const eo = document.getElementById('exam-owner'), wo = document.getElementById('wrong-owner');
+    const eoCur = eo ? eo.value : '', woCur = wo ? wo.value : '';
+    eo.outerHTML = ownerSelect('exam-owner', eoCur||'');
+    wo.outerHTML = ownerSelect('wrong-owner', woCur||'');
+  }
+  // 查看范围下拉
+  const bar = document.getElementById('scope-bar');
+  if(me){
+    bar.style.display='';
+    const sel = document.getElementById('owner-filter');
+    const opts = ['<option value="">全部人</option>'].concat((state.users||[]).map(u=>`<option value="${esc(u.username)}" ${u.username===ownerFilter?'selected':''}>${esc(u.name)}${u.grade?('（'+esc(u.grade)+'）'):''}</option>`));
+    sel.innerHTML = opts.join('');
+    document.getElementById('scope-tip').textContent = isAdmin() ? '（管理员：可查看并编辑所有人的数据）' : '（只能修改自己的记录，他人记录为只读）';
+  } else bar.style.display='none';
+}
+
+/* ================= 录入：错题 ================= */
+const PHOTO_MAX = 3;                 // 每题最多照片数
+let pendingWrongPhotos = [];         // 待保存的照片 dataURL 数组
+async function addWrongPhotos(fileList){
+  const files = Array.from(fileList||[]).filter(f=>f.type.startsWith('image/'));
+  if(!files.length) return;
+  const room = PHOTO_MAX - pendingWrongPhotos.length;
+  if(room<=0){ toast('每道错题最多 '+PHOTO_MAX+' 张照片'); document.getElementById('wrong-photos').value=''; return; }
+  const use = files.slice(0, room);
+  if(files.length>room) toast('最多 '+PHOTO_MAX+' 张，已只添加前 '+room+' 张');
+  for(const f of use){
+    if(f.size > 15*1024*1024){ toast('「'+f.name+'」过大，已跳过'); continue; }
+    try{ pendingWrongPhotos.push(await compressImage(f)); renderWrongPhotoGrid(); }
+    catch(e){ toast('图片处理失败，已跳过'); }
+  }
+  document.getElementById('wrong-photos').value='';
+}
+/* 压缩图片：最长边 1000px、JPEG 质量 0.72，通常压到 100~200KB */
+function compressImage(file){
+  return new Promise((resolve,reject)=>{
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = ()=>{
+      try{
+        const max = 1000;
+        let {width:w, height:h} = img;
+        if(Math.max(w,h)>max){ const s = max/Math.max(w,h); w=Math.round(w*s); h=Math.round(h*s); }
+        const cv = document.createElement('canvas'); cv.width=w; cv.height=h;
+        cv.getContext('2d').drawImage(img,0,0,w,h);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/jpeg', .72));
+      }catch(e){ URL.revokeObjectURL(url); reject(e); }
+    };
+    img.onerror = ()=>{ URL.revokeObjectURL(url); reject(new Error('load fail')); };
+    img.src = url;
+  });
+}
+function renderWrongPhotoGrid(){
+  const grid = document.getElementById('wrong-photo-grid');
+  if(!grid) return;
+  const thumbs = pendingWrongPhotos.map((src,i)=>`
+    <div class="photo-thumb">
+      <img src="${src}" onclick="viewPhoto(this.src)" alt="题目照片${i+1}">
+      <button class="photo-del" onclick="removePendingPhoto(${i})" title="移除">✕</button>
+    </div>`).join('');
+  const add = pendingWrongPhotos.length<PHOTO_MAX
+    ? `<label class="photo-add" onclick="document.getElementById('wrong-photos').click()"><span class="cam">📷</span>${pendingWrongPhotos.length?'继续添加':'拍照 / 选照片'}</label>` : '';
+  grid.innerHTML = thumbs + add;
+  const tip = document.getElementById('photo-tip');
+  if(tip) tip.textContent = pendingWrongPhotos.length ? ('已添加 '+pendingWrongPhotos.length+'/'+PHOTO_MAX+' 张，保存错题时一并上传') : '点击方框拍照或选择图片，照片会自动压缩后保存';
+}
+function removePendingPhoto(i){ pendingWrongPhotos.splice(i,1); renderWrongPhotoGrid(); }
+function viewPhoto(src){
+  document.getElementById('photo-viewer-img').src = src;
+  document.getElementById('photo-viewer').style.display = 'flex';
+}
+async function saveWrong(){
+  const kp = document.getElementById('wrong-kp').value.trim();
+  if(!kp){ toast('请填写知识点'); return; }
+  const existing = editingWrongId ? state.wrongs.find(w=>w.id===editingWrongId) : null;
+  const rec = {
+    id: existing ? existing.id : uid(),
+    owner: existing ? existing.owner : (isAdmin() && document.getElementById('wrong-owner') ? document.getElementById('wrong-owner').value : (me?me.username:'')),
+    examId: document.getElementById('wrong-exam').value,
+    subject: document.getElementById('wrong-subject').value,
+    no: document.getElementById('wrong-no').value.trim(),
+    kp, type: document.getElementById('wrong-type').value,
+    desc: document.getElementById('wrong-desc').value.trim(),
+    photos: pendingWrongPhotos.slice(),
+    fixed: existing? existing.fixed : 0,
+    createdAt: existing? existing.createdAt : Date.now()
+  };
+  try{ await commit('wrongs', rec); toast(rec.photos.length?('错题及 '+rec.photos.length+' 张照片已保存 ✓'):'错题已保存 ✓'); }catch(e){ toast('保存失败：'+e.message); return; }
+  editingWrongId = null;
+  pendingWrongPhotos = [];
+  renderWrongPhotoGrid();
+  ['wrong-no','wrong-kp','wrong-desc'].forEach(id=>document.getElementById(id).value='');
+}
+async function setFixed(id, val){
+  const w = state.wrongs.find(x=>x.id===id); if(!w) return;
+  if(!canEdit(w.owner)){ toast('无权限修改他人的错题'); return; }
+  try{ await commit('wrongs', {...w, fixed:val}); }catch(e){ toast('操作失败：'+e.message); }
+}
+async function delWrong(id){
+  const w = state.wrongs.find(x=>x.id===id); if(!w) return;
+  if(!canEdit(w.owner)){ toast('无权限删除他人的错题'); return; }
+  if(!confirm('删除该错题？')) return;
+  try{ await removeRec('wrongs', id); }catch(e){ toast('删除失败：'+e.message); }
+}
+function statusBadge(f){
+  if(f===2) return '<span class="badge green">重做通过 ✓</span>';
+  if(f===1) return '<span class="badge blue">已订正未重做</span>';
+  return '<span class="badge red">未订正</span>';
+}
+function renderWrongBook(){
+  const fs = document.getElementById('filter-subject').value;
+  const fst = document.getElementById('filter-status').value;
+  const list = fArr('wrongs').filter(w=>(!fs||w.subject===fs)&&(fst===''||String(w.fixed)===fst));
+  document.getElementById('wrong-count').textContent = `共 ${state.wrongs.length} 题，当前筛选 ${list.length} 题`;
+  const box = document.getElementById('wrong-list');
+  if(!list.length){ box.innerHTML = '<div class="empty">暂无错题，去「录入」页添加吧</div>'; return; }
+  const typeColor = {'知识性错误':'red','方法/思维错误':'orange','审题/信息提取错误':'blue','表达/规范错误':'blue','非智力因素':'gray','教学环节归因':'red'};
+  box.innerHTML = list.map(w=>{
+    const ex = state.exams.find(e=>e.id===w.examId);
+    const editable = canEdit(w.owner);
+    return `<div class="record-item">
+      <div class="record-head">
+        <div>
+          <span class="subject-tag" style="background:${SUB[w.subject].color}"></span>
+          <b>${SUB[w.subject].name}</b> ｜ ${esc(w.no||'未标题号')} ｜ <b>${esc(w.kp)}</b>
+          <span class="badge ${typeColor[w.type]||'gray'}" style="margin-left:6px">${w.type}</span>
+          ${me?`<span class="badge gray" style="margin-left:4px">记录人：${esc(userName(w.owner))}</span>`:''}
+          ${!editable?'<span class="badge gray">只读</span>':''}
+        </div>
+        ${statusBadge(w.fixed)}
+      </div>
+      <div class="muted" style="margin-top:6px">
+        ${ex?('关联考试：'+esc(examTitle(ex))+' ｜ '):'<span style="color:#d97706">未关联考试 ｜ </span>'}
+        ${w.desc?('错因：'+esc(w.desc)+' ｜ '):''}记录时间：${new Date(w.createdAt).toLocaleDateString('zh-CN')}
+      </div>
+      ${(w.photos&&w.photos.length)?`<div class="photo-grid" style="margin-top:8px">
+        ${w.photos.map(src=>`<div class="photo-thumb"><img src="${src}" onclick="viewPhoto(this.src)" alt="题目照片" loading="lazy"></div>`).join('')}
+        <span class="muted" style="align-self:center">📷 ${w.photos.length} 张题目照片，点击可看大图</span>
+      </div>`:''}
+      ${editable?`<div class="flex" style="margin-top:8px">
+        ${w.fixed<1?`<button class="btn small ghost" onclick="setFixed('${w.id}',1)">标记已订正</button>`:''}
+        ${w.fixed===1?`<button class="btn small" onclick="setFixed('${w.id}',2)">重做通过 ✓</button>`:''}
+        <button class="btn small ghost" onclick="editWrong('${w.id}')">✏️ 编辑</button>
+        <button class="btn small ghost" onclick="delWrong('${w.id}')">删除</button>
+      </div>`:''}
+    </div>`;
+  }).join('');
+}
+function editWrong(id){
+  const w = state.wrongs.find(x=>x.id===id); if(!w) return;
+  if(!canEdit(w.owner)){ toast('无权限编辑他人的错题'); return; }
+  editingWrongId = id;
+  switchToEntry();
+  document.getElementById('wrong-exam').value = w.examId||'';
+  document.getElementById('wrong-subject').value = w.subject;
+  document.getElementById('wrong-no').value = w.no||'';
+  document.getElementById('wrong-kp').value = w.kp||'';
+  document.getElementById('wrong-type').value = w.type;
+  document.getElementById('wrong-desc').value = w.desc||'';
+  pendingWrongPhotos = (w.photos||[]).slice();
+  renderWrongPhotoGrid();
+  toast('正在编辑错题，修改后点击"保存错题"');
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ================= 考试记录列表 ================= */
+function renderRecords(){
+  const box = document.getElementById('records-list');
+  const exams = fArr('exams');
+  if(!exams.length){ box.innerHTML = '<div class="empty">暂无考试记录，去「录入」页添加吧</div>'; return; }
+  // 以周次标签为关键字分组：同周次 = 同一次考试，所有学生的成绩放在一起比较
+  const groups = new Map();
+  exams.forEach(e=>{
+    const key = e.week ? 'w:'+e.week : 'd:'+e.date+'-'+(e.id);
+    if(!groups.has(key)) groups.set(key, { label: e.week ? e.week : '未标注周次', dates:[], items:[] });
+    const g = groups.get(key);
+    g.items.push(e);
+    if(!g.dates.includes(e.date)) g.dates.push(e.date);
+  });
+  const glist = Array.from(groups.values());
+  glist.forEach(g=>{
+    g.items.sort((a,b)=>userName(a.owner).localeCompare(userName(b.owner),'zh'));
+    g.dates.sort();
+    g.dateLabel = g.dates.length>1 ? g.dates[0]+' ~ '+g.dates[g.dates.length-1] : g.dates[0];
+    g.sortDate = g.dates[g.dates.length-1];
+    // 各科最高分（用于 ⭐ 标记）
+    g.top = {};
+    Object.keys(SUB).forEach(k=>{ g.top[k] = Math.max(...g.items.map(e=>e.scores[k]?e.scores[k].score:-Infinity)); });
+  });
+  glist.sort((a,b)=> a.sortDate<b.sortDate ? 1 : -1);
+  box.innerHTML = glist.map(g=>{
+    const rows = g.items.map(e=>{
+      const editable = canEdit(e.owner);
+      const cells = Object.keys(SUB).map(k=>{
+        const s = e.scores[k];
+        if(!s) return '<td class="muted">—</td>';
+        const r = s.score/state.full[k]*100;
+        const rc = rateCls(r);
+        const isTop = s.score===g.top[k];
+        return `<td>
+          <b style="font-size:15px;${isTop?'color:var(--ok)':''}">${s.score}</b>${isTop?' ⭐':''}<span class="muted">/${state.full[k]}</span>
+          ${s.rank!=null?`<br><span class="muted">第${s.rank}名${s.total?('/'+s.total):''}</span>`:''}
+          <br><span class="badge ${rc.cls}">${r.toFixed(0)}%</span>
+        </td>`;
+      }).join('');
+      const total = Object.keys(SUB).reduce((t,k)=>t+(e.scores[k]?e.scores[k].score:0),0);
+      const wc = state.wrongs.filter(w=>w.examId===e.id).length;
+      return `<tr>
+        <td>
+          <b>${esc(userName(e.owner))}</b>${me&&e.owner===me.username?'<span class="badge blue" style="margin-left:4px">我</span>':''}
+          ${userGrade(e.owner)?`<div><span class="badge blue" style="margin-top:2px">${esc(userGrade(e.owner))}</span>${userSchool(e.owner)?`<span class="muted" style="font-size:11px;margin-left:4px">${esc(userSchool(e.owner))}</span>`:''}</div>`:''}
+        </td>
+        ${cells}
+        <td><b>${total}</b></td>
+        <td>${wc?`<span class="badge red">${wc} 错题</span>`:'—'}</td>
+        <td><div class="flex" style="gap:4px">
+          ${editable?`
+            <button class="btn small" onclick="editExam('${e.id}')" title="编辑">✏️</button>
+            <button class="btn small ghost" onclick="addWrongFor('${e.id}')" title="为本次考试添加错题">+错题</button>
+            <button class="btn small danger" onclick="delExam('${e.id}')" title="删除">删</button>`
+          :'<span class="badge gray">只读</span>'}
+        </div></td>
+      </tr>`;
+    }).join('');
+    return `<div class="record-item">
+      <div class="record-head" style="cursor:default">
+        <b>📅 ${esc(g.label)}</b>
+        <span class="muted">考试日期：${esc(g.dateLabel)} ｜ ${g.items.length} 名学生 ｜ <span style="color:var(--ok)">⭐ 该科最高分</span></span>
+      </div>
+      <div class="tbl-wrap">
+      <table class="table" style="margin-top:10px">
+        <thead><tr><th>学生</th><th><span class="subject-tag" style="background:${SUB.chinese.color}"></span>语文</th><th><span class="subject-tag" style="background:${SUB.math.color}"></span>数学</th><th><span class="subject-tag" style="background:${SUB.english.color}"></span>英语</th><th>总分</th><th>错题</th><th>操作</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+      ${(()=>{ const notes = g.items.filter(e=>e.note); return notes.length?`<p class="hint" style="margin-top:8px">备注：${notes.map(e=>esc(userName(e.owner))+'：'+esc(e.note)).join('；')}</p>`:''; })()}
+    </div>`;
+  }).join('');
+}
+function addWrongFor(examId){
+  document.getElementById('wrong-exam').value = examId;
+  switchToEntry();
+}
+function countWrong(examId, subject){ return state.wrongs.filter(w=>w.examId===examId&&w.subject===subject).length; }
+function switchToEntry(){
+  document.querySelector('.tab[data-page="entry"]').click();
+  window.scrollTo({top:0, behavior:'smooth'});
+}
+
+/* ================= 统计 ================= */
+function renderStats(){
+  const exams = fArr('exams');
+  if(!exams.length){ document.getElementById('overall-metrics').innerHTML='<div class="empty" style="grid-column:1/-1">当前范围暂无数据</div>'; document.getElementById('chart-trend').innerHTML=''; document.getElementById('chart-rank').innerHTML=''; document.getElementById('chart-wrongtype').innerHTML=''; document.getElementById('weak-kps').innerHTML='<div class="empty">暂无数据</div>'; return; }
+  // 与记录页一致的分组规则：同周次标签 = 同一次考试
+  const groups = groupExamsByWeek(exams);
+  const n = groups.length;
+  const latest = groups[n-1];
+  document.getElementById('overall-metrics').innerHTML = `
+    <div class="metric"><div class="lbl">考试总次数（同周次算一次）${ownerFilter?('（'+esc(userName(ownerFilter))+'）'):''}</div><div class="val">${n}</div><div class="muted">最近：${esc(groupTitle(latest))}</div></div>
+    ${Object.keys(SUB).map(k=>{
+      const rates = groups.map(g=>groupRate(g,k));
+      const r = rates[n-1];
+      if(r==null){ return `<div class="metric"><div class="lbl">${SUB[k].name}</div><div class="val" style="color:#9ca3af">—</div><div class="muted">暂无成绩</div></div>`; }
+      const rc = rateCls(r);
+      let trend='';
+      if(n>1 && rates[n-2]!=null){
+        const d = r-rates[n-2];
+        trend = `<div class="muted">较上次 ${d>=0?'↑':'↓'} ${Math.abs(d).toFixed(1)} 个百分点</div>`;
+      } else {
+        trend = `<div class="muted">首次考试，暂无对比</div>`;
+      }
+      return `<div class="metric"><div class="lbl"><span class="subject-tag" style="background:${SUB[k].color}"></span>${SUB[k].name}得分率${ownerFilter?'':('（'+esc(String(latest.exams.filter(e=>e.scores[k]).length))+'人均分）')}</div><div class="val" style="color:${SUB[k].color}">${r.toFixed(1)}%</div><span class="badge ${rc.cls}">${rc.label}</span> ${trend}</div>`;
+    }).join('')}`;
+  renderTrendChart(groups); renderRankChart(groups); renderWrongTypeChart(); renderWeakKps();
+}
+/* 按周次分组：同周次=同一次考试；返回按最近日期排序的组数组 */
+function groupExamsByWeek(exams){
+  const map = {};
+  exams.forEach(e=>{
+    const key = e.week ? 'w:'+e.week : 'd:'+e.date+'-'+e.id;
+    if(!map[key]) map[key] = { key, week:e.week||'', dates:[], exams:[] };
+    map[key].exams.push(e);
+    map[key].dates.push(e.date);
+  });
+  return Object.values(map).map(g=>{
+    g.dates.sort();
+    g.date = g.dates[g.dates.length-1];
+    return g;
+  }).sort((a,b)=> a.date<b.date?-1 : a.date>b.date?1 : 0);
+}
+function groupTitle(g){
+  if(g.week) return g.week + '（' + (g.dates[0]===g.date ? g.date : g.dates[0]+'~'+g.date) + '）';
+  return g.date;
+}
+/* 组内某科平均得分率（%），组内无人有该科成绩则返回 null */
+function groupRate(g,k){
+  const arr = g.exams.filter(e=>e.scores[k]);
+  if(!arr.length) return null;
+  return arr.reduce((s,e)=>s+e.scores[k].score/state.full[k]*100,0)/arr.length;
+}
+function groupAvgRank(g,k){
+  const arr = g.exams.filter(e=>e.scores[k]&&e.scores[k].rank);
+  if(!arr.length) return null;
+  return arr.reduce((s,e)=>s+e.scores[k].rank,0)/arr.length;
+}
+/* ============ 趋势图：x轴=考试（周次组），点=组内平均得分率；仅一次考试时只画点不画线 ============ */
+function renderTrendChart(groups){
+  const W=960,H=300,P={l:50,r:20,t:20,b:40};
+  const list = groups.filter(g=>Object.keys(SUB).some(k=>groupRate(g,k)!=null));
+  if(!list.length){ document.getElementById('chart-trend').innerHTML='<div class="empty">暂无数据</div>'; return; }
+  const xstep = (W-P.l-P.r)/Math.max(list.length-1,1);
+  const xOf = i => list.length===1 ? (P.l+(W-P.l-P.r)/2) : P.l+i*xstep;
+  let lines='';
+  Object.keys(SUB).forEach(k=>{
+    const pts=[]; list.forEach((g,i)=>{ const r=groupRate(g,k); if(r!=null) pts.push([xOf(i), r]); });
+    if(!pts.length) return;
+    if(pts.length>1) lines += `<path d="${pts.map((p,idx)=>`${idx?'L':'M'}${p[0]},${H-P.b-p[1]*(H-P.t-P.b)/100}`).join(' ')}" fill="none" stroke="${SUB[k].color}" stroke-width="2.5" stroke-linejoin="round"/>`;
+    pts.forEach(p=>{ lines += `<circle cx="${p[0]}" cy="${H-P.b-p[1]*(H-P.t-P.b)/100}" r="4" fill="${SUB[k].color}"><title>${SUB[k].name} ${p[1].toFixed(1)}%</title></circle>`; });
+  });
+  let grid='';
+  for(let v=0; v<=100; v+=20){
+    const y = H-P.b-v*(H-P.t-P.b)/100;
+    grid += `<line x1="${P.l}" y1="${y}" x2="${W-P.r}" y2="${y}" stroke="#e5e7eb"/><text x="${P.l-8}" y="${y+4}" font-size="11" fill="#6b7280" text-anchor="end">${v}%</text>`;
+  }
+  const xlabels = list.map((g,i)=>`<text x="${xOf(i)}" y="${H-12}" font-size="11" fill="#6b7280" text-anchor="middle">${esc(g.week||g.date.slice(5))}</text>`).join('');
+  const legend = Object.keys(SUB).map(k=>`<rect x="${P.l+10+Object.keys(SUB).indexOf(k)*70}" y="6" width="12" height="12" rx="3" fill="${SUB[k].color}"/><text x="${P.l+26+Object.keys(SUB).indexOf(k)*70}" y="16" font-size="12" fill="#374151">${SUB[k].name}</text>`).join('');
+  const tip = list.length===1 ? '<p class="hint" style="margin-bottom:4px">目前只有一次考试，显示全班平均得分率；再录入下一次考试后即可看到趋势线。</p>' : '';
+  document.getElementById('chart-trend').innerHTML = tip+`<svg viewBox="0 0 ${W} ${H}" style="width:100%">${grid}${lines}${xlabels}${legend}</svg>`;
+}
+function renderRankChart(groups){
+  const W=460,H=280,P={l:45,r:15,t:20,b:35};
+  const list = groups.filter(g=>Object.keys(SUB).some(k=>groupAvgRank(g,k)!=null));
+  if(!list.length){ document.getElementById('chart-rank').innerHTML='<div class="empty">暂无排名数据（录入时填写排名即可）</div>'; return; }
+  let maxRank=1;
+  list.forEach(g=>Object.keys(SUB).forEach(k=>{ const r=groupAvgRank(g,k); if(r!=null) maxRank=Math.max(maxRank,Math.ceil(r)); }));
+  maxRank = Math.ceil(maxRank*1.1);
+  const xstep=(W-P.l-P.r)/Math.max(list.length-1,1);
+  const xOf = i => list.length===1 ? (P.l+(W-P.l-P.r)/2) : P.l+i*xstep;
+  let lines='';
+  Object.keys(SUB).forEach(k=>{
+    const pts=[]; list.forEach((g,i)=>{ const r=groupAvgRank(g,k); if(r!=null) pts.push([xOf(i),r]); });
+    if(!pts.length) return;
+    if(pts.length>1) lines += `<path d="${pts.map((p,idx)=>`${idx?'L':'M'}${p[0]},${P.t+(p[1]-1)*(H-P.t-P.b)/(maxRank-1)}`).join(' ')}" fill="none" stroke="${SUB[k].color}" stroke-width="2.5"/>`;
+    pts.forEach(p=>lines+=`<circle cx="${p[0]}" cy="${P.t+(p[1]-1)*(H-P.t-P.b)/(maxRank-1)}" r="4" fill="${SUB[k].color}"/>`);
+  });
+  let grid='';
+  const steps = maxRank<=10?1:Math.ceil(maxRank/8);
+  for(let v=1; v<=maxRank; v+=steps){
+    const y = P.t+(v-1)*(H-P.t-P.b)/(maxRank-1);
+    grid += `<line x1="${P.l}" y1="${y}" x2="${W-P.r}" y2="${y}" stroke="#e5e7eb"/><text x="${P.l-6}" y="${y+4}" font-size="11" fill="#6b7280" text-anchor="end">${v}</text>`;
+  }
+  const xlabels = list.map((g,i)=>`<text x="${xOf(i)}" y="${H-10}" font-size="10" fill="#6b7280" text-anchor="middle">${esc(g.week||g.date.slice(5))}</text>`).join('');
+  const tip = list.length===1 ? '<p class="hint" style="margin-bottom:6px">只有一次考试，暂无排名趋势。</p>' : '';
+  document.getElementById('chart-rank').innerHTML = tip+`<p class="hint" style="margin-bottom:6px">⚠️ 名次越小越好，线越靠上代表排名越好${ownerFilter?'':'（多次考试时显示组内平均名次）'}</p><svg viewBox="0 0 ${W} ${H}" style="width:100%">${grid}${lines}${xlabels}</svg>`;
+}
+function renderWrongTypeChart(){
+  const wrongs = fArr('wrongs');
+  const types = ['知识性错误','方法/思维错误','审题/信息提取错误','表达/规范错误','非智力因素','教学环节归因'];
+  const counts = types.map(t=>wrongs.filter(w=>w.type===t).length);
+  const total = counts.reduce((a,b)=>a+b,0);
+  if(!total){ document.getElementById('chart-wrongtype').innerHTML='<div class="empty">暂无错题数据</div>'; return; }
+  const colors=['#dc2626','#d97706','#2563eb','#7c3aed','#6b7280','#be123c'];
+  const max = Math.max(...counts);
+  document.getElementById('chart-wrongtype').innerHTML = types.map((t,i)=>`
+    <div style="margin-bottom:10px">
+      <div class="flex" style="justify-content:space-between"><span style="font-size:13px">${t}</span><b style="font-size:13px">${counts[i]} 题（${(counts[i]/total*100).toFixed(0)}%）</b></div>
+      <div class="rate-bar" style="margin-top:4px"><div class="rate-fill" style="width:${counts[i]/max*100}%;background:${colors[i]}"></div></div>
+    </div>`).join('')
+    + `<p class="hint" style="margin-top:8px">判读：知识性/教学环节归因多 → 需要重讲知识点；审题/表达类多 → 做专项规范训练而非重讲；非智力因素多 → 调整考试习惯与时间分配。</p>`;
+}
+function renderWeakKps(){
+  const wrongs = fArr('wrongs');
+  const map = {};
+  wrongs.forEach(w=>{ const k=w.subject+'|'+w.kp; if(!map[k]) map[k]={subject:w.subject, kp:w.kp, n:0, types:{}}; map[k].n++; map[k].types[w.type]=(map[k].types[w.type]||0)+1; });
+  const list = Object.values(map).sort((a,b)=>b.n-a.n).slice(0,10);
+  if(!list.length){ document.getElementById('weak-kps').innerHTML='<div class="empty">暂无数据</div>'; return; }
+  const max = list[0].n;
+  document.getElementById('weak-kps').innerHTML = list.map(x=>`
+    <div class="flex" style="margin-bottom:8px">
+      <span class="subject-tag" style="background:${SUB[x.subject].color}"></span>
+      <b style="min-width:130px">${esc(x.kp)}</b>
+      <div class="rate-bar"><div class="rate-fill" style="width:${x.n/max*100}%;background:${SUB[x.subject].color}"></div></div>
+      <span class="badge red">${x.n} 次出错</span>
+      <span class="muted">${Object.entries(x.types).map(([t,c])=>t+'×'+c).join('，')}</span>
+    </div>`).join('')
+    + `<p class="hint" style="margin-top:8px">同一知识点错 2 次及以上，建议列入追踪事项：专题重讲 + 变式练习，并在下次周测验证。</p>`;
+}
+
+/* ================= 追踪事项 ================= */
+async function addTrack(text){
+  const t = text!==undefined ? text : document.getElementById('track-text').value.trim();
+  if(!t){ toast('请填写追踪内容'); return; }
+  const rec = { id:uid(), owner: me?me.username:'', text:t, done:false, createdAt:Date.now() };
+  try{ await commit('tracks', rec); if(text===undefined) document.getElementById('track-text').value=''; toast('已添加追踪事项 ✓'); }catch(e){ toast('添加失败：'+e.message); }
+}
+async function toggleTrack(id){
+  const t = state.tracks.find(x=>x.id===id); if(!t) return;
+  if(!canEdit(t.owner)){ toast('无权限修改他人的追踪事项'); return; }
+  try{ await commit('tracks', {...t, done:!t.done}); }catch(e){ toast('操作失败：'+e.message); }
+}
+async function delTrack(id){
+  const t = state.tracks.find(x=>x.id===id); if(!t) return;
+  if(!canEdit(t.owner)){ toast('无权限删除他人的追踪事项'); return; }
+  try{ await removeRec('tracks', id); }catch(e){ toast('删除失败：'+e.message); }
+}
+async function autoGenTracks(){
+  const undone = fArr('wrongs').filter(w=>w.fixed<2 && canEdit(w.owner));
+  if(!undone.length){ toast('错题本中没有属于自己的未闭环错题'); return; }
+  const kpMap = {};
+  undone.forEach(w=>{ const k=w.subject+'|'+w.kp; kpMap[k]=(kpMap[k]||0)+1; });
+  let added=0;
+  for(const [k,n] of Object.entries(kpMap)){
+    const [sub,kp]=k.split('|');
+    const text = `${SUB[sub].name}「${kp}」出错 ${n} 次 → 安排专题讲解 + 3 道变式练习，下次周测验证`;
+    if(!state.tracks.some(t=>t.owner===(me?me.username:'')&&t.text===text)){
+      try{ await commit('tracks', { id:uid(), owner: me?me.username:'', text, done:false, createdAt:Date.now() }); added++; }catch(e){}
+    }
+  }
+  renderTracks();
+  toast(added?('已自动生成 '+added+' 条追踪事项 ✓'):'相关追踪事项已存在，未重复添加');
+}
+function renderTracks(){
+  const list = fArr('tracks');
+  const open = list.filter(t=>!t.done), done = list.filter(t=>t.done);
+  const item = t=>{
+    const editable = canEdit(t.owner);
+    return `<div class="track-item ${t.done?'done':''}">
+      <input type="checkbox" ${t.done?'checked':''} ${editable?'':`disabled`} onchange="toggleTrack('${t.id}')" style="width:18px;height:18px;margin-top:2px">
+      <div style="flex:1"><div>${esc(t.text)}</div><div class="muted">添加于 ${new Date(t.createdAt).toLocaleDateString('zh-CN')}${me?(' · '+esc(userName(t.owner))):''}</div></div>
+      ${editable?`<button class="btn small ghost" onclick="delTrack('${t.id}')">删除</button>`:''}
+    </div>`;
+  };
+  document.getElementById('track-list').innerHTML =
+    (open.length? open.map(item).join('') : '<div class="empty">暂未完成事项 🎉</div>')
+    + (done.length? `<h2 style="font-size:14px;margin:16px 0 8px">已完成（${done.length}）</h2>`+done.map(item).join('') : '');
+}
+
+/* ================= 我的资料（学校 / 年级） ================= */
+function renderMyProfile(){
+  const card = document.getElementById('my-profile-card');
+  if(!card) return;
+  if(!me){ card.style.display='none'; return; }
+  card.style.display='';
+  document.getElementById('my-name').value = me.name||'';
+  document.getElementById('my-school').value = me.school||'';
+  fillGradeSelect('my-grade', me.grade||'', true);
+  document.getElementById('my-grade-tip').innerHTML = me.grade ? nextGradeTip(me.username) : '当前未设置年级（家长/老师账号可不填）';
+}
+async function saveMyProfile(){
+  if(!me) return;
+  const school = document.getElementById('my-school').value.trim();
+  const grade = document.getElementById('my-grade').value;
+  try{
+    const d = await api('/api/users', { action:'profile', username: me.username, school, grade });
+    if(d.user){ me = d.user; localStorage.setItem('auth_me', JSON.stringify(me)); }
+    applyServerState(d);
+    updateUserChip();
+    toast('资料已保存 ✓');
+  }catch(e){ toast('保存失败：'+e.message); }
+}
+
+/* ================= 用户管理（管理员） ================= */
+function renderUsers(){
+  if(!isAdmin()){ document.getElementById('users-card').style.display='none'; return; }
+  document.getElementById('users-card').style.display='';
+  const box = document.getElementById('users-list');
+  box.innerHTML = `<div class="tbl-wrap"><table class="table"><thead><tr><th>姓名</th><th>用户名</th><th>学校</th><th>年级</th><th>角色</th><th>操作</th></tr></thead><tbody>` +
+    (state.users||[]).map(u=>`<tr>
+      <td><b>${esc(u.name)}</b>${u.username===me.username?'（我）':''}</td>
+      <td>${esc(u.username)}</td>
+      <td>${u.school?esc(u.school):'<span class="muted">—</span>'}</td>
+      <td>${u.grade?`<span class="badge blue">${esc(u.grade)}</span><div class="muted" style="font-size:11px;margin-top:2px">${nextGradeTip(u.username)}</div>`:'<span class="muted">—</span>'}</td>
+      <td>${u.role==='admin'?'<span class="badge orange">管理员</span>':'<span class="badge gray">成员</span>'}</td>
+      <td><div class="flex" style="gap:6px">
+        <button class="btn small ghost" onclick="editUserProfile('${esc(u.username)}')">改学校/年级</button>
+        <button class="btn small ghost" onclick="resetPw('${esc(u.username)}')">重置密码</button>
+        <button class="btn small ghost" onclick="renameUser('${esc(u.username)}')">改姓名</button>
+        ${u.username!==me.username?`<button class="btn small danger" onclick="delUser('${esc(u.username)}')">删除</button>`:''}
+      </div></td>
+    </tr>`).join('') + '</tbody></table></div>';
+  renderSignupPanel();
+}
+
+/* ================= 注册申请审批（管理员） ================= */
+function renderSignupPanel(){
+  if(!isAdmin()) return;
+  const box = document.getElementById('signup-card');
+  if(!box) return;
+  const allow = !(state.settings && state.settings.allowSignup === false);
+  const cb = document.getElementById('allow-signup');
+  if(cb) cb.checked = allow;
+  const list = state.registrations || [];
+  document.getElementById('pending-count').textContent = list.length ? `（${list.length} 条待处理）` : '（暂无待处理申请）';
+  const wrap = document.getElementById('pending-list');
+  if(!list.length){
+    wrap.innerHTML = '<div class="empty" style="padding:14px 0">暂无待审批的注册申请</div>';
+    return;
+  }
+  wrap.innerHTML = list.map(r=>`
+    <div class="track-item" style="align-items:center">
+      <div style="flex:1">
+        <b>${esc(r.name)}</b>
+        ${r.grade?`<span class="badge blue" style="margin-left:4px">${esc(r.grade)}</span>`:''}
+        <span class="muted">${r.school?('学校：'+esc(r.school)+' ｜ '):''}建议用户名：<b>${esc(r.username)}</b> ｜ 提交时间：${new Date(r.createdAt).toLocaleString('zh-CN')}</span>
+      </div>
+      <div class="flex" style="gap:6px">
+        <button class="btn small" onclick="approveReg('${r.id}')">通过</button>
+        <button class="btn small ghost" onclick="rejectReg('${r.id}')">拒绝</button>
+      </div>
+    </div>`).join('');
+}
+async function toggleSignup(checked){
+  try{
+    const d = await api('/api/op', { op:'signup', allow:!!checked });
+    applyServerState(d);
+    toast(checked ? '已开放自主注册 ✓' : '已关闭自主注册');
+  }catch(e){
+    toast('操作失败：'+e.message);
+    renderSignupPanel();
+  }
+}
+async function approveReg(id){
+  try{
+    const d = await api('/api/users', { action:'approve', id });
+    applyServerState(d);
+    const a = d.approved;
+    toast(a ? ('已通过 ' + a.name + '（' + a.username + '），可通知其登录') : '已通过');
+  }catch(e){ toast('审批失败：'+e.message); }
+}
+async function rejectReg(id){
+  const r = (state.registrations||[]).find(x=>x.id===id);
+  if(!confirm('拒绝' + (r?('「'+r.name+'」'):'该') + '的注册申请？')) return;
+  try{
+    const d = await api('/api/users', { action:'reject', id });
+    applyServerState(d);
+    toast('已拒绝该申请');
+  }catch(e){ toast('操作失败：'+e.message); }
+}
+async function addUser(){
+  const username = document.getElementById('new-username').value.trim();
+  const name = document.getElementById('new-name').value.trim();
+  const password = document.getElementById('new-password').value;
+  const role = document.getElementById('new-role').value;
+  const school = document.getElementById('new-school').value.trim();
+  const grade = document.getElementById('new-grade').value;
+  if(!username||!name||!password){ toast('请填写完整'); return; }
+  try{
+    const d = await api('/api/users', { action:'add', username, name, password, role, school, grade });
+    applyServerState(d);
+    ['new-username','new-name','new-password','new-school'].forEach(id=>document.getElementById(id).value='');
+    delete document.getElementById('new-username').dataset.touched;
+    fillGradeSelect('new-grade', DEFAULT_GRADE);
+    toast('用户已添加 ✓');
+  }catch(e){ toast(e.message); }
+}
+/* 修改学校 / 年级（管理员可改所有人，成员只能改自己） */
+async function editUserProfile(username){
+  const o = userObj(username) || {};
+  const school = prompt(`修改「${userName(username)||username}」的学校（留空表示不填）：`, o.school||'');
+  if(school===null) return;
+  const cur = o.grade || DEFAULT_GRADE;
+  const grade = prompt(`修改年级（可填：${GRADES.join('、')}）\n注意：改为新年级后，将按当前学年重新起算自动升级。`, cur);
+  if(grade===null) return;
+  const g = grade.trim();
+  if(g && !GRADES.includes(g)){ toast('年级无效，请从列表中选择'); return; }
+  try{
+    const d = await api('/api/users', { action:'profile', username, school: school.trim(), grade: g });
+    applyServerState(d);
+    toast('学校 / 年级已更新 ✓');
+  }catch(e){ toast(e.message); }
+}
+async function delUser(username){
+  if(!confirm(`删除用户 ${userName(username)||username}？其历史记录会保留。`)) return;
+  try{ const d = await api('/api/users', { action:'remove', username }); applyServerState(d); toast('已删除'); }
+  catch(e){ toast(e.message); }
+}
+async function resetPw(username){
+  const pw = prompt(`为「${userName(username)||username}」设置新密码（至少4位）：`);
+  if(pw===null) return;
+  try{ const d = await api('/api/users', { action:'resetpw', username, password:pw }); applyServerState(d); toast('密码已重置 ✓'); }
+  catch(e){ toast(e.message); }
+}
+async function renameUser(username){
+  const name = prompt(`修改「${userName(username)||username}」的显示姓名：`, userName(username));
+  if(name===null) return;
+  try{ const d = await api('/api/users', { action:'rename', username, name }); applyServerState(d); toast('姓名已更新 ✓'); }
+  catch(e){ toast(e.message); }
+}
+
+/* ================= 数据管理 ================= */
+function renderDataPage(){
+  document.getElementById('full-chinese').value = state.full.chinese;
+  document.getElementById('full-math').value = state.full.math;
+  document.getElementById('full-english').value = state.full.english;
+  const admin = isAdmin();
+  document.getElementById('users-card').style.display = admin?'':'none';
+  document.getElementById('signup-card').style.display = admin?'':'none';
+  document.getElementById('clear-card').style.display = admin?'':'none';
+  document.getElementById('full-editable').style.display = (admin||!me)?'':'none';
+  document.getElementById('full-readonly-tip').style.display = (me&&!admin)?'':'none';
+  document.getElementById('sync-online-panel').style.display = me?'':'none';
+  document.getElementById('sync-offline-tip').style.display = me?'none':'';
+  renderMyProfile();
+  renderUsers();
+}
+async function saveFull(){
+  const f = { chinese: +document.getElementById('full-chinese').value, math: +document.getElementById('full-math').value, english: +document.getElementById('full-english').value };
+  if(me){
+    try{ const d = await api('/api/op', { op:'settings', full:f }); applyServerState(d); toast('满分设置已保存并同步 ✓'); }
+    catch(e){ toast(e.message); }
+  } else {
+    ['chinese','math','english'].forEach(k=>{ if(f[k]>0) state.full[k]=f[k]; });
+    saveCache(); renderScoreInputs(); toast('满分设置已保存 ✓');
+  }
+}
+function download(name, content, mime){
+  const blob = new Blob(["\ufeff"+content], {type:mime});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = name; a.click();
+  URL.revokeObjectURL(a.href);
+}
+function exportJSON(){ download('考试成绩备份_'+new Date().toISOString().slice(0,10)+'.json', JSON.stringify(state,null,2), 'application/json'); }
+function importJSON(input){
+  const f = input.files[0]; if(!f) return;
+  if(me){ toast('在线模式下请使用录入页添加数据，不支持整包导入'); input.value=''; return; }
+  const r = new FileReader();
+  r.onload = e=>{
+    try{
+      const d = JSON.parse(e.target.result);
+      if(!d.exams) throw new Error('格式不对');
+      state = Object.assign({}, DEFAULT_STATE, d); saveCache();
+      toast('导入成功 ✓'); rerenderAll();
+    }catch(err){ toast('导入失败：文件格式不正确'); }
+    input.value='';
+  };
+  r.readAsText(f, 'utf-8');
+}
+function exportCSV(){
+  const list = fArr('exams').slice().sort((a,b)=>a.date<b.date?-1:1);
+  let rows = [['考试日期','周次','记录人','科目','成绩','满分','得分率%','排名','班级人数','错题数']];
+  list.forEach(e=>{
+    Object.keys(SUB).forEach(k=>{
+      const s = e.scores[k]; if(!s) return;
+      rows.push([e.date, e.week||'', userName(e.owner), SUB[k].name, s.score, state.full[k], (s.score/state.full[k]*100).toFixed(1), s.rank??'', s.total??'', countWrong(e.id,k)]);
+    });
+  });
+  download('成绩明细_'+new Date().toISOString().slice(0,10)+'.csv', rows.map(r=>r.map(c=>String(c).includes(',')?('"'+c+'"'):c).join(',')).join('\n'), 'text/csv');
+}
+async function clearAll(){
+  if(!confirm('⚠️ 确认清空所有人的全部数据？用户账号保留，此操作不可恢复！')) return;
+  if(!confirm('再次确认：真的要删除所有考试记录、错题、追踪事项吗？')) return;
+  for(const kind of ['exams','wrongs','tracks']){
+    for(const x of [...state[kind]]){
+      try{ await api('/api/op', { op:'delete', kind, id:x.id }); }catch(e){}
+    }
+  }
+  await refreshFromServer(); toast('已清空');
+}
+
+/* ================= 初始化 ================= */
+async function init(){
+  fillGradeSelect('reg-grade', DEFAULT_GRADE); fillGradeSelect('new-grade', DEFAULT_GRADE);
+  renderScoreInputs(); refreshExamSelect(); renderRecords(); renderWrongBook(); renderTracks(); renderDataPage(); renderWrongPhotoGrid();
+  const d = new Date(); document.getElementById('exam-date').value = d.toISOString().slice(0,10);
+  if(SYNC.online){
+    // 查询是否开放自主注册（登录页据此显示/隐藏注册入口）
+    fetch('/api/settings').then(r=>r.json()).then(s=>{
+      const w = document.getElementById('signup-entry-wrap');
+      if(w && s && s.allowSignup === false) w.innerHTML = '<span class="muted">如需账号请联系管理员开通</span>';
+    }).catch(()=>{});
+    // 在线模式：检查已有登录态
+    const savedMe = localStorage.getItem('auth_me');
+    if(savedMe && authToken()){
+      try{
+        me = JSON.parse(savedMe);
+        await refreshFromServer();
+        enterApp();
+        return;
+      }catch(e){ /* token 失效，showLogin 已被 api 触发 */ return; }
+    }
+    showLogin('');
+    document.getElementById('login-username').focus();
+  } else {
+    // 本地模式
+    document.getElementById('app').style.display='';
+    document.getElementById('scope-bar').style.display='none';
+  }
+}
+init();
+</script>
+</body>
+</html>

@@ -276,7 +276,7 @@
         </div>
       </div>
       <div style="margin-top:12px">
-        <label>题目照片（选填，可拍照或从相册选择，最多 3 张，自动压缩存储）</label>
+        <label>题目照片（选填，可拍照或从相册选择，最多 20 张，自动压缩存储）</label>
         <div class="photo-grid" id="wrong-photo-grid"></div>
         <input type="file" id="wrong-photos" accept="image/*" multiple style="display:none" onchange="addWrongPhotos(this.files)">
         <div class="hint" id="photo-tip">点击方框拍照或选择图片，照片会自动压缩后保存</div>
@@ -531,7 +531,13 @@ function fArr(kind){
 function setOwnerFilter(v){ ownerFilter = v; renderRecords(); renderWrongBook(); renderTracks(); renderStats(); }
 
 /* ================= API ================= */
-function authToken(){ return localStorage.getItem('auth_token')||''; }
+function authToken(){
+  const t = localStorage.getItem('auth_token')||'';
+  if(t){ /* 同步写入 Cookie：<img> 标签加载照片时无法带自定义请求头，服务端兼容 Cookie 认证 */
+    document.cookie = 'x_auth='+t+'; path=/; max-age=2592000; SameSite=Lax';
+  }
+  return t;
+}
 async function api(path, body, method){
   const resp = await fetch(path, {
     method: method || (body?'POST':'GET'),
@@ -672,6 +678,7 @@ function enterApp(){
 }
 function logout(){
   localStorage.removeItem('auth_token'); localStorage.removeItem('auth_me');
+  document.cookie = 'x_auth=; path=/; max-age=0; SameSite=Lax';
   me = null; clearInterval(SYNC.timer); SYNC.timer=null;
   showLogin('');
 }
@@ -854,8 +861,10 @@ function refreshOwnerUI(){
 }
 
 /* ================= 录入：错题 ================= */
-const PHOTO_MAX = 3;                 // 每题最多照片数
-let pendingWrongPhotos = [];         // 待保存的照片 dataURL 数组
+const PHOTO_MAX = 20;                // 每题最多照片数
+/* 照片引用格式：新照片为 dataURL（data:image/...），已保存照片为 'file:ph_xxx.jpg'（服务器独立文件） */
+function photoSrc(p){ return p.startsWith('file:') ? '/api/photo/'+encodeURIComponent(p.slice(5)) : p; }
+let pendingWrongPhotos = [];         // 待保存的照片引用数组（dataURL=未上传 / file:名字=已存在）
 async function addWrongPhotos(fileList){
   const files = Array.from(fileList||[]).filter(f=>f.type.startsWith('image/'));
   if(!files.length) return;
@@ -893,16 +902,16 @@ function compressImage(file){
 function renderWrongPhotoGrid(){
   const grid = document.getElementById('wrong-photo-grid');
   if(!grid) return;
-  const thumbs = pendingWrongPhotos.map((src,i)=>`
+  const thumbs = pendingWrongPhotos.map((p,i)=>`
     <div class="photo-thumb">
-      <img src="${src}" onclick="viewPhoto(this.src)" alt="题目照片${i+1}">
+      <img src="${photoSrc(p)}" onclick="viewPhoto('${photoSrc(p)}')" alt="题目照片${i+1}">
       <button class="photo-del" onclick="removePendingPhoto(${i})" title="移除">✕</button>
     </div>`).join('');
   const add = pendingWrongPhotos.length<PHOTO_MAX
     ? `<label class="photo-add" onclick="document.getElementById('wrong-photos').click()"><span class="cam">📷</span>${pendingWrongPhotos.length?'继续添加':'拍照 / 选照片'}</label>` : '';
   grid.innerHTML = thumbs + add;
   const tip = document.getElementById('photo-tip');
-  if(tip) tip.textContent = pendingWrongPhotos.length ? ('已添加 '+pendingWrongPhotos.length+'/'+PHOTO_MAX+' 张，保存错题时一并上传') : '点击方框拍照或选择图片，照片会自动压缩后保存';
+  if(tip) tip.textContent = pendingWrongPhotos.length ? ('已添加 '+pendingWrongPhotos.length+'/'+PHOTO_MAX+' 张，保存错题时一并上传') : '点击方框拍照或选择图片，最多 '+PHOTO_MAX+' 张，照片会自动压缩后保存';
 }
 function removePendingPhoto(i){ pendingWrongPhotos.splice(i,1); renderWrongPhotoGrid(); }
 function viewPhoto(src){
@@ -912,6 +921,15 @@ function viewPhoto(src){
 async function saveWrong(){
   const kp = document.getElementById('wrong-kp').value.trim();
   if(!kp){ toast('请填写知识点'); return; }
+  /* 未上传的新照片先逐张上传，换回服务器文件名；已存在的照片直接沿用 */
+  const names = [];
+  const fresh = pendingWrongPhotos.filter(p=>!p.startsWith('file:')).length;
+  if(fresh) toast('正在上传 '+fresh+' 张照片…');
+  for(const p of pendingWrongPhotos){
+    if(p.startsWith('file:')){ names.push(p.slice(5)); continue; }
+    try{ const r = await api('/api/photo', { data: p }); names.push(r.name); }
+    catch(e){ toast('照片上传失败：'+e.message); return; }
+  }
   const existing = editingWrongId ? state.wrongs.find(w=>w.id===editingWrongId) : null;
   const rec = {
     id: existing ? existing.id : uid(),
@@ -921,7 +939,7 @@ async function saveWrong(){
     no: document.getElementById('wrong-no').value.trim(),
     kp, type: document.getElementById('wrong-type').value,
     desc: document.getElementById('wrong-desc').value.trim(),
-    photos: pendingWrongPhotos.slice(),
+    photos: names,
     fixed: existing? existing.fixed : 0,
     createdAt: existing? existing.createdAt : Date.now()
   };
@@ -974,7 +992,7 @@ function renderWrongBook(){
         ${w.desc?('错因：'+esc(w.desc)+' ｜ '):''}记录时间：${new Date(w.createdAt).toLocaleDateString('zh-CN')}
       </div>
       ${(w.photos&&w.photos.length)?`<div class="photo-grid" style="margin-top:8px">
-        ${w.photos.map(src=>`<div class="photo-thumb"><img src="${src}" onclick="viewPhoto(this.src)" alt="题目照片" loading="lazy"></div>`).join('')}
+        ${w.photos.map(p=>`<div class="photo-thumb"><img src="${photoSrc(p)}" onclick="viewPhoto('${photoSrc(p)}')" alt="题目照片" loading="lazy"></div>`).join('')}
         <span class="muted" style="align-self:center">📷 ${w.photos.length} 张题目照片，点击可看大图</span>
       </div>`:''}
       ${editable?`<div class="flex" style="margin-top:8px">
@@ -997,7 +1015,7 @@ function editWrong(id){
   document.getElementById('wrong-kp').value = w.kp||'';
   document.getElementById('wrong-type').value = w.type;
   document.getElementById('wrong-desc').value = w.desc||'';
-  pendingWrongPhotos = (w.photos||[]).slice();
+  pendingWrongPhotos = (w.photos||[]).map(p=>'file:'+p);
   renderWrongPhotoGrid();
   toast('正在编辑错题，修改后点击"保存错题"');
   window.scrollTo({top:0, behavior:'smooth'});

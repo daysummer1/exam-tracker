@@ -21,6 +21,10 @@ const DATA_DIR = process.env.DATA_DIR || DIR;
 try { fs.mkdirSync(DATA_DIR, { recursive: true }); } catch (e) {}
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 const CONFIG_FILE = path.join(DATA_DIR, 'config.json');
+/* 照片独立目录：错题照片不再以 base64 内嵌在 data.json 里，单独存成图片文件 */
+const PHOTOS_DIR = path.join(DATA_DIR, 'photos');
+try { fs.mkdirSync(PHOTOS_DIR, { recursive: true }); } catch (e) {}
+const PHOTO_NAME_RE = /^ph_[a-f0-9]+\.(jpg|jpeg|png|webp)$/;
 
 /* 首次切换到外部数据目录时，迁移本地已有数据 */
 if (DATA_DIR !== DIR && !fs.existsSync(DATA_FILE) && fs.existsSync(path.join(DIR, 'data.json'))) {
@@ -94,6 +98,65 @@ function persist() {
 }
 function saveConfig() { fs.writeFileSync(CONFIG_FILE, JSON.stringify(config, null, 2)); }
 
+/* ---------- 照片文件存储 ---------- */
+/* 错题照片独立存储在 PHOTOS_DIR，data.json 中只保存文件名（ph_xxx.jpg） */
+const PHOTO_MIME = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
+/* 把一段 dataURL 保存为照片文件，返回文件名；失败返回空串 */
+function storePhotoData(dataUrl) {
+  const m = String(dataUrl || '').match(/^data:image\/(png|jpeg|jpg|webp);base64,([A-Za-z0-9+/=]+)$/);
+  if (!m) return '';
+  const buf = Buffer.from(m[2], 'base64');
+  if (!buf.length || buf.length > 4 * 1024 * 1024) return '';
+  const ext = m[1] === 'jpeg' ? 'jpg' : m[1];
+  let name = 'ph_' + rand(8) + '.' + ext, tries = 0;
+  while (fs.existsSync(path.join(PHOTOS_DIR, name)) && tries++ < 5) name = 'ph_' + rand(8) + '.' + ext;
+  try { fs.writeFileSync(path.join(PHOTOS_DIR, name), buf); return name; } catch (e) { return ''; }
+}
+/* 把记录里的照片统一规范成文件名（兼容 base64 老数据与 file: 前缀） */
+function normalizeWrongPhotos(rec) {
+  if (!Array.isArray(rec.photos)) { rec.photos = []; return; }
+  rec.photos = rec.photos.map(p => {
+    if (typeof p !== 'string') return '';
+    if (p.startsWith('file:')) p = p.slice(5);
+    if (p.startsWith('data:image/')) return storePhotoData(p);   // 老客户端/迁移数据兜底
+    return PHOTO_NAME_RE.test(p) ? p : '';
+  }).filter(Boolean).slice(0, 20);   /* 服务端同样限制每题最多 20 张 */
+}
+/* 启动迁移：把历史数据中内嵌的 base64 照片搬到 photos/ 目录 */
+function migratePhotosToFiles() {
+  let moved = 0;
+  (db.wrongs || []).forEach(w => {
+    if (!Array.isArray(w.photos)) { w.photos = []; return; }
+    w.photos = w.photos.map(p => {
+      if (typeof p !== 'string') return '';
+      if (!p.startsWith('data:image/')) return PHOTO_NAME_RE.test(p) ? p : '';
+      const n = storePhotoData(p);
+      if (n) moved++;
+      return n;
+    }).filter(Boolean);
+  });
+  if (moved) { persist(); console.log('🖼️ 已迁移 ' + moved + ' 张内嵌照片到 ' + PHOTOS_DIR); }
+}
+/* 清理孤儿照片：未被任何错题引用、且已上传超过 24 小时（给"上传后未保存"留缓冲） */
+function gcPhotos() {
+  try {
+    const ref = new Set();
+    (db.wrongs || []).forEach(w => (w.photos || []).forEach(p => {
+      if (typeof p === 'string' && !p.startsWith('data:')) ref.add(p.replace(/^file:/, ''));
+    }));
+    const cutoff = Date.now() - 24 * 3600 * 1000;
+    let n = 0;
+    fs.readdirSync(PHOTOS_DIR).forEach(f => {
+      if (!PHOTO_NAME_RE.test(f) || ref.has(f)) return;
+      const fp = path.join(PHOTOS_DIR, f);
+      try { if (fs.statSync(fp).mtimeMs < cutoff) { fs.unlinkSync(fp); n++; } } catch (e) {}
+    });
+    if (n) console.log('🧹 已清理 ' + n + ' 张未被引用的照片');
+  } catch (e) {}
+}
+let gcTimer = 0;
+function gcPhotosSoon() { const now = Date.now(); if (now - gcTimer < 5 * 60 * 1000) return; gcTimer = now; gcPhotos(); }
+
 /* ---------- 用户与认证 ---------- */
 /* ---------- 学校 / 年级 ---------- */
 /* 学级序列：小学 1-6 年级 → 初中 3 年 → 高中 3 年 */
@@ -146,6 +209,9 @@ function findUser(username) { return db.users.find(u => u.username === username)
 /* 初始化数据库 + 启动时按学年自动升级（跨 9/1 后重启即生效） */
 initDb();
 promoteUsers();
+migratePhotosToFiles();   /* 老数据中内嵌的照片迁移为独立文件 */
+gcPhotos();               /* 清理历史孤儿照片 */
+setInterval(gcPhotos, 6 * 3600 * 1000);
 
 function safeUser(u) {
   const ay = acadYearStart();
@@ -161,9 +227,16 @@ function safeUser(u) {
   };
 }
 function sign(username) { return 't1.' + Buffer.from(username).toString('base64url') + '.' + crypto.createHmac('sha256', config.secret).update(username).digest('hex'); }
+function getCookie(req, name) {
+  const h = req.headers.cookie;
+  if (!h) return '';
+  const m = String(h).split(/;\s*/).find(c => c.startsWith(name + '='));
+  return m ? decodeURIComponent(m.slice(name.length + 1)) : '';
+}
 function auth(req) {
-  const t = req.headers['x-auth'];
-  if (!t || typeof t !== 'string') return null;
+  /* 优先 x-auth 请求头；<img> 等标签无法带自定义头，允许同名 Cookie（登录时由前端写入） */
+  const t = (typeof req.headers['x-auth'] === 'string' && req.headers['x-auth']) || getCookie(req, 'x_auth');
+  if (!t) return null;
   const parts = t.split('.');
   if (parts.length !== 3 || parts[0] !== 't1') return null;
   let username;
@@ -279,6 +352,26 @@ const server = http.createServer(async (req, res) => {
 
       if (url.pathname === '/api/state' && req.method === 'GET') return json(res, 200, visibleState(user));
 
+      /* 上传错题照片：body { data: dataURL }，落盘为独立文件，返回文件名 */
+      if (url.pathname === '/api/photo' && req.method === 'POST') {
+        const body = await readBody(req);
+        const name = storePhotoData(body.data);
+        if (!name) return json(res, 400, { error: '照片数据无效或超过 4MB' });
+        return json(res, 200, { ok: true, name });
+      }
+
+      /* 读取照片文件（需登录；文件名全局唯一可永久缓存） */
+      const pm = url.pathname.match(/^\/api\/photo\/([a-z0-9_]+\.(?:jpg|jpeg|png|webp))$/);
+      if (pm && req.method === 'GET') {
+        const fp = path.join(PHOTOS_DIR, pm[1]);
+        if (!fp.startsWith(PHOTOS_DIR) || !PHOTO_NAME_RE.test(pm[1]) || !fs.existsSync(fp)) {
+          return json(res, 404, { error: '照片不存在' });
+        }
+        const buf = fs.readFileSync(fp);
+        res.writeHead(200, { 'Content-Type': PHOTO_MIME[path.extname(fp)] || 'application/octet-stream', 'Cache-Control': 'private, max-age=31536000, immutable' });
+        return res.end(buf);
+      }
+
       if (url.pathname === '/api/op' && req.method === 'POST') {
         const body = await readBody(req);
         if (body.op === 'settings') {
@@ -311,8 +404,10 @@ const server = http.createServer(async (req, res) => {
             rec.createdAt = rec.createdAt || Date.now();
           }
           rec.updatedAt = Date.now();
+          if (kind === 'wrongs') normalizeWrongPhotos(rec);   /* 照片统一存为文件，data.json 只留文件名 */
           if (idx >= 0) db[kind][idx] = rec; else db[kind].unshift(rec);
           persist();
+          if (kind === 'wrongs') gcPhotosSoon();
           return json(res, 200, visibleState(user));
         }
         if (body.op === 'delete') {
@@ -321,6 +416,7 @@ const server = http.createServer(async (req, res) => {
           if (!canEdit(user, db[kind][idx].owner)) return json(res, 403, { error: '无权限删除他人的记录' });
           db[kind].splice(idx, 1);
           persist();
+          if (kind === 'wrongs') gcPhotosSoon();
           return json(res, 200, visibleState(user));
         }
         return json(res, 400, { error: '无效操作' });

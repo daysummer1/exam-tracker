@@ -863,7 +863,13 @@ function refreshOwnerUI(){
 /* ================= 录入：错题 ================= */
 const PHOTO_MAX = 20;                // 每题最多照片数
 /* 照片引用格式：新照片为 dataURL（data:image/...），已保存照片为 'file:ph_xxx.jpg'（服务器独立文件） */
-function photoSrc(p){ return p.startsWith('file:') ? '/api/photo/'+encodeURIComponent(p.slice(5)) : p; }
+function photoSrc(p){
+  if(typeof p!=='string') return '';
+  if(p.startsWith('file:')) return '/api/photo/'+encodeURIComponent(p.slice(5));
+  /* 存储层统一为纯文件名（ph_xxx.jpg），兼容直接给出文件名的情况 */
+  if(/^ph_[a-f0-9]+\.(jpg|jpeg|png|webp)$/i.test(p)) return '/api/photo/'+encodeURIComponent(p);
+  return p; /* dataURL 或其他，原样返回 */
+}
 let pendingWrongPhotos = [];         // 待保存的照片引用数组（dataURL=未上传 / file:名字=已存在）
 async function addWrongPhotos(fileList){
   const files = Array.from(fileList||[]).filter(f=>f.type.startsWith('image/'));

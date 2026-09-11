@@ -267,11 +267,16 @@ function json(res, code, obj) {
 function visibleState(user) {
   /* 始终读取数据库中的最新用户对象（auth 返回的是快照，资料/年级可能刚被修改或升级） */
   const fresh = findUser(user.username) || user;
-  const out = { ok: true, user: safeUser(fresh), exams: db.exams, wrongs: db.wrongs, tracks: db.tracks, full: db.full,
-    settings: { allowSignup: db.settings.allowSignup !== false } };
-  /* 成员名册（姓名/学校/年级），用于记录与对比表显示；不含任何凭据字段 */
-  out.users = db.users.map(safeUser);
-  if (fresh.role === 'admin') {
+  const isAdmin = fresh.role === 'admin';
+  /* 权限硬隔离：管理员可见全部；成员只能看到自己的记录与自己的资料（服务端过滤，非前端隐藏） */
+  const own = r => isAdmin || r.owner === fresh.username;
+  const out = { ok: true, user: safeUser(fresh),
+    exams: db.exams.filter(own), wrongs: db.wrongs.filter(own), tracks: db.tracks.filter(own),
+    full: db.full, settings: { allowSignup: db.settings.allowSignup !== false } };
+  /* 用户名册：管理员全量（姓名/学校/年级，不含凭据）；成员仅自己（用于显示自己的姓名/年级） */
+  out.users = isAdmin ? db.users.map(safeUser)
+    : db.users.filter(u => u.username === fresh.username).map(safeUser);
+  if (isAdmin) {
     // 待审批注册申请（不含密码哈希等敏感字段）
     out.registrations = (db.registrations || []).map(r => ({
       id: r.id, username: r.username, name: r.name, createdAt: r.createdAt,
@@ -360,11 +365,15 @@ const server = http.createServer(async (req, res) => {
         return json(res, 200, { ok: true, name });
       }
 
-      /* 读取照片文件（需登录；文件名全局唯一可永久缓存） */
+      /* 读取照片文件（需登录；文件名全局唯一可永久缓存）。
+         归属校验：照片必须被一条当前用户可见的错题引用（管理员放行），防止凭文件名窥看他人照片 */
       const pm = url.pathname.match(/^\/api\/photo\/([a-z0-9_]+\.(?:jpg|jpeg|png|webp))$/);
       if (pm && req.method === 'GET') {
         const fp = path.join(PHOTOS_DIR, pm[1]);
         if (!fp.startsWith(PHOTOS_DIR) || !PHOTO_NAME_RE.test(pm[1]) || !fs.existsSync(fp)) {
+          return json(res, 404, { error: '照片不存在' });
+        }
+        if (user.role !== 'admin' && !db.wrongs.some(w => w.owner === user.username && Array.isArray(w.photos) && w.photos.includes(pm[1]))) {
           return json(res, 404, { error: '照片不存在' });
         }
         const buf = fs.readFileSync(fp);

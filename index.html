@@ -531,9 +531,20 @@ function nextGradeTip(u){
 }
 function fArr(kind){
   const arr = state[kind]||[];
-  return ownerFilter ? arr.filter(x=>x.owner===ownerFilter) : arr;
+  /* 查看范围：'' = 全部；'g:年级' = 该年级所有人的记录合并；否则为指定用户名 */
+  if(ownerFilter){
+    if(ownerFilter.startsWith('g:')){ const g=ownerFilter.slice(2); return arr.filter(x=>examGrade(x)===g); }
+    return arr.filter(x=>x.owner===ownerFilter);
+  }
+  return arr;
 }
 function setOwnerFilter(v){ ownerFilter = v; renderRecords(); renderWrongBook(); renderTracks(); renderStats(); }
+/* 当前范围的显示名：年级范围显示年级名，个人范围显示姓名 */
+function scopeName(){
+  if(!ownerFilter) return '';
+  if(ownerFilter.startsWith('g:')) return ownerFilter.slice(2);
+  return userName(ownerFilter);
+}
 
 /* ================= API ================= */
 function authToken(){
@@ -859,7 +870,17 @@ function refreshOwnerUI(){
   if(me && isAdmin()){
     bar.style.display='';
     const sel = document.getElementById('owner-filter');
-    const opts = ['<option value="">全部人</option>'].concat((state.users||[]).map(u=>`<option value="${esc(u.username)}" ${u.username===ownerFilter?'selected':''}>${esc(u.name)}${u.grade?('（'+esc(u.grade)+'）'):''}</option>`));
+    const us = (state.users||[]).filter(u=>u.username!=='admin');
+    const grades = [...new Set(us.map(u=>u.grade).filter(Boolean))].sort((a,b)=>gradeSortIdx(a)-gradeSortIdx(b));
+    const opts = ['<option value="">全部人</option>'];
+    if(grades.length){
+      opts.push('<optgroup label="按年级（该年级所有人的学情）">');
+      grades.forEach(g=>opts.push(`<option value="g:${esc(g)}" ${('g:'+g)===ownerFilter?'selected':''}>🏫 ${esc(g)}（${us.filter(u=>u.grade===g).length} 人）</option>`));
+      opts.push('</optgroup>');
+    }
+    opts.push('<optgroup label="按个人">');
+    us.forEach(u=>opts.push(`<option value="${esc(u.username)}" ${u.username===ownerFilter?'selected':''}>${esc(u.name)}${u.grade?('（'+esc(u.grade)+'）'):''}</option>`));
+    opts.push('</optgroup>');
     sel.innerHTML = opts.join('');
     document.getElementById('scope-tip').textContent = '（管理员：可查看并编辑所有人的数据）';
   } else if(bar) bar.style.display='none';
@@ -1125,7 +1146,7 @@ function renderStats(){
   const n = groups.length;
   const latest = groups[n-1];
   document.getElementById('overall-metrics').innerHTML = `
-    <div class="metric"><div class="lbl">考试总次数（同周次算一次）${ownerFilter?('（'+esc(userName(ownerFilter))+'）'):''}</div><div class="val">${n}</div><div class="muted">最近：${esc(groupTitle(latest))}</div></div>
+    <div class="metric"><div class="lbl">考试总次数（同周次算一次）${ownerFilter?('（'+esc(scopeName())+'）'):''}</div><div class="val">${n}</div><div class="muted">最近：${esc(groupTitle(latest))}</div></div>
     ${Object.keys(SUB).map(k=>{
       const rates = groups.map(g=>groupRate(g,k));
       const r = rates[n-1];
@@ -1138,7 +1159,7 @@ function renderStats(){
       } else {
         trend = `<div class="muted">首次考试，暂无对比</div>`;
       }
-      return `<div class="metric"><div class="lbl"><span class="subject-tag" style="background:${SUB[k].color}"></span>${SUB[k].name}得分率${ownerFilter?'':('（'+esc(String(latest.exams.filter(e=>e.scores[k]).length))+'人均分）')}</div><div class="val" style="color:${SUB[k].color}">${r.toFixed(1)}%</div><span class="badge ${rc.cls}">${rc.label}</span> ${trend}</div>`;
+      return `<div class="metric"><div class="lbl"><span class="subject-tag" style="background:${SUB[k].color}"></span>${SUB[k].name}得分率${'（'+esc(String(latest.exams.filter(e=>e.scores[k]).length))+'人均分）'}</div><div class="val" style="color:${SUB[k].color}">${r.toFixed(1)}%</div><span class="badge ${rc.cls}">${rc.label}</span> ${trend}</div>`;
     }).join('')}`;
   renderTrendChart(groups); renderRankChart(groups); renderWrongTypeChart(); renderWeakKps(); renderGradeAnalysis(groups);
 }
@@ -1185,6 +1206,11 @@ function groupGradeRate(g,k,grade){
 function renderGradeAnalysis(groups){
   const box = document.getElementById('grade-analysis');
   if(!box) return;
+  /* 选了范围（个人或年级）时，上方所有图表就是该范围的学情分析，此卡片只作提示 */
+  if(ownerFilter){
+    box.innerHTML = `<p class="hint" style="margin:0">当前查看范围为「<b>${esc(scopeName())}</b>」，上方整体指标 / 成绩趋势 / 排名 / 薄弱知识点均已只统计该范围。切换回「全部人」可查看年级间对比表。</p>`;
+    return;
+  }
   const grades = [...new Set(fArr('exams').map(examGrade))].sort((a,b)=>gradeSortIdx(a)-gradeSortIdx(b));
   if(!grades.length){ box.innerHTML='<div class="empty">暂无数据</div>'; return; }
   if(grades.length===1){

@@ -865,9 +865,9 @@ function refreshOwnerUI(){
     eo.outerHTML = ownerSelect('exam-owner', eoCur||'');
     wo.outerHTML = ownerSelect('wrong-owner', woCur||'');
   }
-  // 查看范围下拉：仅管理员需要（成员服务端只返回自己的记录，无范围可选）
+  // 查看范围下拉：所有人可用（成员也能按年级/个人筛选查看；服务端已对成员脱敏他人姓名）
   const bar = document.getElementById('scope-bar');
-  if(me && isAdmin()){
+  if(me){
     bar.style.display='';
     const sel = document.getElementById('owner-filter');
     const us = (state.users||[]).filter(u=>u.username!=='admin');
@@ -882,7 +882,7 @@ function refreshOwnerUI(){
     us.forEach(u=>opts.push(`<option value="${esc(u.username)}" ${u.username===ownerFilter?'selected':''}>${esc(u.name)}${u.grade?('（'+esc(u.grade)+'）'):''}</option>`));
     opts.push('</optgroup>');
     sel.innerHTML = opts.join('');
-    document.getElementById('scope-tip').textContent = '（管理员：可查看并编辑所有人的数据）';
+    document.getElementById('scope-tip').textContent = isAdmin() ? '（管理员：可查看并编辑所有人的数据）' : '（可查看所有人的记录与学情，仅能修改自己的；他人姓名以首字母显示）';
   } else if(bar) bar.style.display='none';
 }
 

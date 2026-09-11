@@ -73,6 +73,20 @@ function up(local, remote) { return new Promise((res, rej) => sftp.fastPut(local
   const lhyLogin = await call('/api/login', 'POST', { username: 'lhy', password: 'lhy123' });
   log('8) lhy 登录(lhy123):', lhyLogin.j && lhyLogin.j.token ? '✅ role=' + lhyLogin.j.user.role : '(旧密码可能已被用户自行修改: ' + lhyLogin.buf.slice(0, 80) + ')');
 
+  /* 配置线上 OCR（智谱 GLM-4V-Flash，密钥只存服务器 data.json） */
+  const ocrKey = fs.readFileSync('C:/Users/tony/WorkBuddy/2026-09-09-20-20-52/.zhipukey', 'utf8').trim();
+  const oc = await call('/api/op', 'POST', { op: 'ocrconfig', provider: 'zhipu', zhipuKey: ocrKey }, tok);
+  log('9) OCR 配置:', oc.j && oc.j.settings && oc.j.settings.ocr && oc.j.settings.ocr.configured ? '✅ 已启用智谱通道' : '❌ ' + oc.buf.slice(0, 120));
+
+  /* 线上 OCR 实测（用线上真实照片） */
+  const wP = st.j.wrongs.find(w => w.photos && w.photos.length);
+  if (wP) {
+    const pr = await call('/api/photo/' + encodeURIComponent(wP.photos[0]), 'GET', null, tok);
+    const dataUrl = 'data:image/jpeg;base64,' + pr.buf.toString('base64');
+    const or = await call('/api/ocr', 'POST', { data: dataUrl }, tok);
+    log('10) 线上 OCR 实测: HTTP', or.code, or.j && or.j.text ? '→ ' + or.j.text.slice(0, 80).replace(/\n/g, ' ') : or.buf.slice(0, 120));
+  }
+
   log('=== 更新完成 ===');
   require('fs').writeFileSync(path.join(REPO, '_upd_out.txt'), out.join('\n'), 'utf8');
   conn.end();

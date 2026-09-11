@@ -9,6 +9,7 @@
  * - 默认管理员：admin / admin123（请登录后尽快在用户管理中重置密码）
  */
 const http = require('http');
+const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
@@ -271,7 +272,7 @@ function visibleState(user) {
   /* 权限：所有人可查看全部记录与学情（写入仍受 owner 限制，服务端强制） */
   const out = { ok: true, user: safeUser(fresh),
     exams: db.exams, wrongs: db.wrongs, tracks: db.tracks,
-    full: db.full, settings: { allowSignup: db.settings.allowSignup !== false } };
+    full: db.full, settings: { allowSignup: db.settings.allowSignup !== false, ocr: ocrStatus() } };
   /* 用户名册：管理员全量真实姓名；成员全员可见，但他人姓名以用户名（首字母）显示，学校/年级保留（供对比与年级分析） */
   out.users = db.users.map(u => {
     const su = safeUser(u);
@@ -300,6 +301,87 @@ function serveStatic(req, res) {
     res.writeHead(200, { 'Content-Type': MIME[path.extname(file)] || 'application/octet-stream', 'Cache-Control': 'no-cache' });
     res.end(buf);
   });
+}
+
+/* ---------- OCR（题目照片文字识别）：智谱 GLM-4V-Flash / 腾讯云手写体 OCR ---------- */
+const OCR_PROMPT = '这是学生错题的照片。请把照片中的题目文字完整转写出来，要求：\n1. 按原题顺序转写，保留题号、小问编号和选项标号（A. B. C. D.）；\n2. 数学式子用易读写法：平方写 ^2，分数写 a/b，根号写 √，角度用 ∠，全等/相似用文字表述；\n3. 只输出题目内容本身，不要任何解释、点评或前后缀；\n4. 若照片模糊或不是题目，只输出：【无法识别】。';
+
+function ocrCfg() {
+  if (!db.settings || typeof db.settings !== 'object') db.settings = {};
+  const o = db.settings.ocr || {};
+  return {
+    provider: process.env.OCR_PROVIDER || o.provider || '',
+    zhipuKey: process.env.ZHIPU_API_KEY || o.zhipuKey || '',
+    tcSecretId: process.env.TENCENT_SECRET_ID || o.tcSecretId || '',
+    tcSecretKey: process.env.TENCENT_SECRET_KEY || o.tcSecretKey || ''
+  };
+}
+function ocrConfigured() {
+  const c = ocrCfg();
+  return (c.provider === 'zhipu' && !!c.zhipuKey) || (c.provider === 'tencent' && !!c.tcSecretId && !!c.tcSecretKey);
+}
+function ocrStatus() {
+  const c = ocrCfg();
+  return { provider: c.provider, configured: ocrConfigured() };
+}
+
+function httpPostJson(host, p, headers, bodyObj, timeout = 45000) {
+  return new Promise((resolve, reject) => {
+    const data = JSON.stringify(bodyObj);
+    const req = https.request({ hostname: host, path: p, method: 'POST', headers: Object.assign({ 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(data) }, headers), timeout }, x => {
+      const s = []; x.on('data', c => s.push(c)); x.on('end', () => resolve({ code: x.statusCode, buf: Buffer.concat(s) }));
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('OCR 请求超时')); });
+    req.on('error', reject);
+    req.write(data); req.end();
+  });
+}
+
+async function ocrZhipu(mime, b64) {
+  const c = ocrCfg();
+  const r = await httpPostJson('open.bigmodel.cn', '/api/paas/v4/chat/completions',
+    { Authorization: 'Bearer ' + c.zhipuKey },
+    {
+      model: 'glm-4v-flash',
+      messages: [{ role: 'user', content: [
+        { type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + b64 } },
+        { type: 'text', text: OCR_PROMPT }
+      ] }],
+      temperature: 0.1, max_tokens: 1024
+    });
+  let j = null; try { j = JSON.parse(r.buf); } catch (e) {}
+  const txt = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  if (!txt) {
+    const msg = j && j.error && j.error.message;
+    throw new Error('智谱接口异常: HTTP ' + r.code + (msg ? ' ' + msg : ' ' + r.buf.slice(0, 120)));
+  }
+  return String(txt).trim();
+}
+
+/* 腾讯云 TC3-HMAC-SHA256 签名（零依赖实现） */
+async function ocrTencent(b64) {
+  const c = ocrCfg();
+  const service = 'ocr', host = 'ocr.tencentcloudapi.com';
+  const action = 'GeneralHandwritingOCR', version = '2018-11-19';
+  const ts = Math.floor(Date.now() / 1000);
+  const date = new Date(ts * 1000).toISOString().slice(0, 10);
+  const payload = JSON.stringify({ ImageBase64: b64 });
+  const hashedBody = crypto.createHash('sha256').update(payload).digest('hex');
+  const canonical = 'POST\n/\n\ncontent-type:application/json\nhost:' + host + '\n\ncontent-type;host\n' + hashedBody;
+  const str2sign = 'TC3-HMAC-SHA256\n' + ts + '\n' + date + '/' + service + '/tc3_request\n' + crypto.createHash('sha256').update(canonical).digest('hex');
+  const kDate = crypto.createHmac('sha256', 'TC3' + c.tcSecretKey).update(date).digest();
+  const kService = crypto.createHmac('sha256', kDate).update(service).digest();
+  const kSigning = crypto.createHmac('sha256', kService).update('tc3_request').digest();
+  const sig = crypto.createHmac('sha256', kSigning).update(str2sign).digest('hex');
+  const r = await httpPostJson(host, '/', {
+    Authorization: 'TC3-HMAC-SHA256 Credential=' + c.tcSecretId + '/' + date + '/' + service + '/tc3_request, SignedHeaders=content-type;host, Signature=' + sig,
+    'X-TC-Action': action, 'X-TC-Version': version, 'X-TC-Timestamp': String(ts), Host: host
+  }, JSON.parse(payload));
+  let j = null; try { j = JSON.parse(r.buf); } catch (e) {}
+  if (j && j.Response && j.Response.Error) throw new Error('腾讯云OCR: ' + j.Response.Error.Message + '（' + j.Response.Error.Code + '）');
+  const items = j && j.Response && j.Response.TextDetections;
+  if (!items) throw new Error('腾讯云OCR返回异常: HTTP ' + r.code);
+  return items.map(t => t.DetectedText).join('\n').trim();
 }
 
 /* ---------- 服务器 ---------- */
@@ -383,8 +465,31 @@ const server = http.createServer(async (req, res) => {
         return res.end(buf);
       }
 
-      if (url.pathname === '/api/op' && req.method === 'POST') {
+      /* 题目照片 OCR：任何登录用户可用；输入 dataURL 或已存照片文件名 */
+      if (url.pathname === '/api/ocr' && req.method === 'POST') {
+        if (!ocrConfigured()) return json(res, 400, { error: 'OCR 未启用：请管理员在「数据管理 → OCR 设置」中配置识别通道' });
         const body = await readBody(req);
+        let mime = 'image/jpeg', b64 = '';
+        if (typeof body.data === 'string' && body.data.startsWith('data:image/')) {
+          const m = body.data.match(/^data:(image\/[a-z+]+);base64,([A-Za-z0-9+/=]+)$/);
+          if (!m) return json(res, 400, { error: '图片数据无效' });
+          mime = m[1]; b64 = m[2];
+        } else if (typeof body.name === 'string' && PHOTO_NAME_RE.test(body.name)) {
+          const fp = path.join(PHOTOS_DIR, body.name);
+          if (!fs.existsSync(fp)) return json(res, 404, { error: '照片文件不存在' });
+          b64 = fs.readFileSync(fp).toString('base64');
+          mime = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' }[path.extname(fp).toLowerCase()] || 'image/jpeg';
+        } else return json(res, 400, { error: '缺少图片数据' });
+        try {
+          const c = ocrCfg();
+          const text = (c.provider === 'tencent') ? await ocrTencent(b64) : await ocrZhipu(mime, b64);
+          return json(res, 200, { ok: true, text: text || '【无法识别】' });
+        } catch (e) {
+          return json(res, 502, { error: 'OCR 调用失败：' + (e.message || e) });
+        }
+      }
+
+      if (url.pathname === '/api/op' && req.method === 'POST') {        const body = await readBody(req);
         if (body.op === 'settings') {
           if (user.role !== 'admin') return json(res, 403, { error: '只有管理员可以修改满分设置' });
           const f = body.full || {};
@@ -395,6 +500,16 @@ const server = http.createServer(async (req, res) => {
         if (body.op === 'signup') {
           if (user.role !== 'admin') return json(res, 403, { error: '只有管理员可以修改注册设置' });
           db.settings.allowSignup = !!body.allow;
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        if (body.op === 'ocrconfig') {
+          if (user.role !== 'admin') return json(res, 403, { error: '只有管理员可以配置 OCR' });
+          const o = db.settings.ocr = db.settings.ocr || {};
+          o.provider = ['zhipu', 'tencent', ''].includes(body.provider) ? body.provider : '';
+          if (body.zhipuKey !== undefined) o.zhipuKey = String(body.zhipuKey).trim();
+          if (body.tcSecretId !== undefined) o.tcSecretId = String(body.tcSecretId).trim();
+          if (body.tcSecretKey !== undefined) o.tcSecretKey = String(body.tcSecretKey).trim();
           persist();
           return json(res, 200, visibleState(user));
         }

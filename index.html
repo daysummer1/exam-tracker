@@ -76,6 +76,8 @@
   .photo-thumb{position:relative; width:84px; height:84px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:#f3f4f6;}
   .photo-thumb img{width:100%; height:100%; object-fit:cover; cursor:zoom-in; display:block;}
   .photo-thumb .photo-del{position:absolute; top:2px; right:2px; width:20px; height:20px; border:none; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:20px; text-align:center; cursor:pointer; padding:0;}
+  .photo-thumb .photo-ocr{position:absolute; bottom:2px; right:2px; width:24px; height:20px; border:none; border-radius:6px; background:rgba(20,110,180,.85); color:#fff; font-size:11px; line-height:20px; text-align:center; cursor:pointer; padding:0;}
+  .photo-thumb .photo-ocr:disabled{opacity:.5; cursor:wait;}
   .photo-add{width:84px; height:84px; border:1.5px dashed #9ca3af; border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; color:var(--muted); font-size:12px; text-align:center; background:#fafbfc;}
   .photo-add:active{background:var(--primary-light);}
   .photo-add .cam{font-size:22px; line-height:1;}
@@ -401,6 +403,35 @@
       </div>
     </div>
 
+    <div class="card" id="ocr-card" style="display:none">
+      <h2>🔍 题目照片 OCR 设置（仅管理员）</h2>
+      <div class="grid2">
+        <div>
+          <label>识别通道</label>
+          <select id="ocr-provider" onchange="onOcrProviderChange()">
+            <option value="">未启用（隐藏照片上的识别按钮）</option>
+            <option value="zhipu">智谱 GLM-4V-Flash（免费、公式理解好）</option>
+            <option value="tencent">腾讯云手写体 OCR（1000次/月免费）</option>
+          </select>
+          <div id="ocr-zipu-box" style="display:none">
+            <label style="margin-top:8px">智谱 API Key</label>
+            <input type="password" id="ocr-zipu-key" placeholder="粘贴 bigmodel.cn 的 API Key（已保存则留空不修改）">
+          </div>
+        </div>
+        <div id="ocr-tc-box" style="display:none">
+          <label>腾讯云 SecretId</label>
+          <input type="password" id="ocr-tc-id" placeholder="已保存则留空不修改">
+          <label style="margin-top:8px">腾讯云 SecretKey</label>
+          <input type="password" id="ocr-tc-key" placeholder="已保存则留空不修改">
+        </div>
+      </div>
+      <p class="hint">密钥只保存在服务器，不会下发给浏览器。智谱 Key 在 bigmodel.cn 控制台获取，免费模型 GLM-4V-Flash 不限量；腾讯云需先在控制台开通「文字识别」服务。</p>
+      <div class="flex" style="justify-content:flex-end; margin-top:10px; align-items:center">
+        <span class="muted" id="ocr-status" style="margin-right:auto"></span>
+        <button class="btn" onclick="saveOcrConfig()">保存 OCR 设置</button>
+      </div>
+    </div>
+
     <div class="card" id="users-card" style="display:none" data-page-node-id="uh8W7yW3HzC68M0R78F53N">
       <h2 data-page-node-id="xjk2SlqdYaI5A4c3I6Zu3Z">👥 用户管理（仅管理员）</h2>
       <div class="grid2" style="align-items:end" data-page-node-id="gPNtqszlGev6QVn1GEZCMF">
@@ -488,6 +519,20 @@
 
   <div class="toast" id="toast" data-page-node-id="PZCspJl4byAL291oLO5ELj"></div>
   <div id="photo-viewer" onclick="this.style.display='none'"><img id="photo-viewer-img" alt="题目照片大图"></div>
+
+  <!-- OCR 识别结果弹窗 -->
+  <div id="ocr-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:60; align-items:center; justify-content:center" onclick="if(event.target===this)this.style.display='none'">
+    <div class="card" style="width:min(92vw,560px); max-height:82vh; display:flex; flex-direction:column; margin:0">
+      <h2 style="margin-bottom:8px">🔍 识别结果（可编辑）</h2>
+      <textarea id="ocr-text" style="flex:1; min-height:180px; resize:vertical"></textarea>
+      <div class="flex" style="justify-content:flex-end; margin-top:10px; gap:8px">
+        <button class="btn ghost" onclick="copyOcr()">复制</button>
+        <button class="btn ghost" onclick="document.getElementById('ocr-modal').style.display='none'">关闭</button>
+        <button class="btn" onclick="ocrIntoDesc()">填入题目描述</button>
+      </div>
+      <p class="hint" style="margin-top:8px">「填入题目描述」会追加到录入表单的描述框中，可修改后再保存。识别结果仅供参考，请核对后再用。</p>
+    </div>
+  </div>
 </div>
 
 <script>
@@ -956,6 +1001,7 @@ function renderWrongPhotoGrid(){
   const thumbs = pendingWrongPhotos.map((p,i)=>`
     <div class="photo-thumb">
       <img src="${photoSrc(p)}" onclick="viewPhoto('${photoSrc(p)}')" alt="题目照片${i+1}">
+      ${ocrAvailable()?`<button class="photo-ocr" onclick="ocrPhoto(${i})" title="识别照片中的题目文字">🔍</button>`:''}
       <button class="photo-del" onclick="removePendingPhoto(${i})" title="移除">✕</button>
     </div>`).join('');
   const add = pendingWrongPhotos.length<PHOTO_MAX
@@ -968,6 +1014,78 @@ function removePendingPhoto(i){ pendingWrongPhotos.splice(i,1); renderWrongPhoto
 function viewPhoto(src){
   document.getElementById('photo-viewer-img').src = src;
   document.getElementById('photo-viewer').style.display = 'flex';
+}
+
+/* ================= 题目照片 OCR ================= */
+function ocrAvailable(){ return !!(state.settings && state.settings.ocr && state.settings.ocr.configured); }
+let ocrBusy = false;
+async function ocrPhoto(i){
+  if(ocrBusy) return toast('正在识别中，请稍候…');
+  const p = pendingWrongPhotos[i];
+  if(!p) return;
+  if(!ocrAvailable()){ toast('OCR 未启用：请管理员在「数据管理 → OCR 设置」中配置'); return; }
+  const btn = event && event.target;
+  ocrBusy = true;
+  if(btn) btn.disabled = true;
+  toast('正在识别照片文字…');
+  try{
+    const body = p.startsWith('file:') ? { name: p.slice(5) } : { data: p };
+    const r = await api('/api/ocr', body);
+    document.getElementById('ocr-text').value = (r.text || '').trim();
+    document.getElementById('ocr-modal').style.display = 'flex';
+  }catch(e){ toast('识别失败：'+e.message); }
+  finally{ ocrBusy = false; if(btn) btn.disabled = false; }
+}
+function ocrIntoDesc(){
+  const t = document.getElementById('ocr-text').value.trim();
+  const d = document.getElementById('wrong-desc');
+  if(d && t) d.value = d.value.trim() ? (d.value.trim() + '\n' + t) : t;
+  document.getElementById('ocr-modal').style.display = 'none';
+  toast('已填入题目描述 ✓');
+}
+function copyOcr(){
+  const t = document.getElementById('ocr-text').value;
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(()=>toast('已复制 ✓'), ()=>toast('复制失败，请手动选择文本'));
+  }else{
+    const ta = document.getElementById('ocr-text'); ta.select();
+    try{ document.execCommand('copy'); toast('已复制 ✓'); }catch(e){ toast('复制失败，请手动选择文本'); }
+  }
+}
+
+/* ---------- OCR 管理员设置 ---------- */
+function renderOcrCard(){
+  const card = document.getElementById('ocr-card');
+  if(!card) return;
+  if(!isAdmin()){ card.style.display='none'; return; }
+  card.style.display='';
+  const st = (state.settings && state.settings.ocr) || {};
+  document.getElementById('ocr-provider').value = st.provider || '';
+  onOcrProviderChange();
+  document.getElementById('ocr-status').textContent = st.configured ? '当前状态：已启用 ✓' : '当前状态：未启用';
+}
+function onOcrProviderChange(){
+  const v = document.getElementById('ocr-provider').value;
+  document.getElementById('ocr-zipu-box').style.display = v==='zhipu' ? '' : 'none';
+  document.getElementById('ocr-tc-box').style.display = v==='tencent' ? '' : 'none';
+}
+async function saveOcrConfig(){
+  const body = { op:'ocrconfig', provider: document.getElementById('ocr-provider').value };
+  const zk = document.getElementById('ocr-zipu-key').value.trim();
+  const ti = document.getElementById('ocr-tc-id').value.trim();
+  const tk = document.getElementById('ocr-tc-key').value.trim();
+  if(zk) body.zhipuKey = zk;
+  if(ti) body.tcSecretId = ti;
+  if(tk) body.tcSecretKey = tk;
+  try{
+    const d = await api('/api/op', body);
+    applyServerState(d);
+    document.getElementById('ocr-zipu-key').value='';
+    document.getElementById('ocr-tc-id').value='';
+    document.getElementById('ocr-tc-key').value='';
+    renderOcrCard();
+    toast('OCR 设置已保存 ✓');
+  }catch(e){ toast('保存失败：'+e.message); }
 }
 async function saveWrong(){
   const kp = document.getElementById('wrong-kp').value.trim();
@@ -1458,6 +1576,7 @@ async function toggleRole(username, curRole){
 
 /* ================= 用户管理（管理员） ================= */
 function renderUsers(){
+  renderOcrCard();
   if(!isAdmin()){ document.getElementById('users-card').style.display='none'; return; }
   document.getElementById('users-card').style.display='';
   const box = document.getElementById('users-list');

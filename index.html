@@ -380,6 +380,25 @@
       <div class="flex" style="margin-top:12px; justify-content:flex-end">
         <button class="btn" onclick="saveMyProfile()">保存我的资料</button>
       </div>
+      <div style="margin-top:18px; padding-top:14px; border-top:1px dashed var(--line, #ddd)">
+        <h2 style="font-size:15px; margin-bottom:8px">🔑 修改密码</h2>
+        <div class="grid2">
+          <div>
+            <label>原密码</label>
+            <input type="password" id="pw-old" autocomplete="current-password">
+            <label style="margin-top:8px">新密码（至少 4 位）</label>
+            <input type="password" id="pw-new" autocomplete="new-password">
+          </div>
+          <div>
+            <label>确认新密码</label>
+            <input type="password" id="pw-new2" autocomplete="new-password">
+            <p class="hint" style="margin-top:10px">修改后本设备保持登录，其他设备需用新密码重新登录。</p>
+          </div>
+        </div>
+        <div class="flex" style="margin-top:12px; justify-content:flex-end">
+          <button class="btn ghost" onclick="changeMyPw()">修改密码</button>
+        </div>
+      </div>
     </div>
 
     <div class="card" id="users-card" style="display:none" data-page-node-id="uh8W7yW3HzC68M0R78F53N">
@@ -1407,6 +1426,36 @@ async function saveMyProfile(){
   }catch(e){ toast('保存失败：'+e.message); }
 }
 
+/* 修改自己的密码（需验证原密码） */
+async function changeMyPw(){
+  if(!me) return;
+  const oldPw = document.getElementById('pw-old').value;
+  const n1 = document.getElementById('pw-new').value;
+  const n2 = document.getElementById('pw-new2').value;
+  if(!oldPw) return toast('请输入原密码');
+  if(n1.length < 4) return toast('新密码至少 4 位');
+  if(n1 !== n2) return toast('两次输入的新密码不一致');
+  try{
+    const d = await api('/api/users', { action:'changepw', oldPassword: oldPw, newPassword: n1 });
+    applyServerState(d);
+    document.getElementById('pw-old').value = '';
+    document.getElementById('pw-new').value = '';
+    document.getElementById('pw-new2').value = '';
+    toast('密码已修改 ✓');
+  }catch(e){ toast('修改失败：'+e.message); }
+}
+
+/* 管理员提升/降级用户角色 */
+async function toggleRole(username, curRole){
+  const toAdmin = curRole !== 'admin';
+  if(!confirm(toAdmin ? `确定把 ${username} 提升为管理员吗？\n管理员可查看和修改所有人的数据、管理用户。` : `确定把 ${username} 降为普通成员吗？`)) return;
+  try{
+    const d = await api('/api/users', { action:'setrole', username, role: toAdmin ? 'admin' : 'member' });
+    applyServerState(d);
+    toast(toAdmin ? '已提升为管理员 ✓' : '已降为成员 ✓');
+  }catch(e){ toast('操作失败：'+e.message); }
+}
+
 /* ================= 用户管理（管理员） ================= */
 function renderUsers(){
   if(!isAdmin()){ document.getElementById('users-card').style.display='none'; return; }
@@ -1423,6 +1472,7 @@ function renderUsers(){
         <button class="btn small ghost" onclick="editUserProfile('${esc(u.username)}')">改学校/年级</button>
         <button class="btn small ghost" onclick="resetPw('${esc(u.username)}')">重置密码</button>
         <button class="btn small ghost" onclick="renameUser('${esc(u.username)}')">改姓名</button>
+        ${u.username!==me.username?`<button class="btn small ghost" onclick="toggleRole('${esc(u.username)}','${u.role}')">${u.role==='admin'?'降为成员':'设为管理员'}</button>`:''}
         ${u.username!==me.username?`<button class="btn small danger" onclick="delUser('${esc(u.username)}')">删除</button>`:''}
       </div></td>
     </tr>`).join('') + '</tbody></table></div>';

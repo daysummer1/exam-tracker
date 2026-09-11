@@ -436,6 +436,30 @@ const server = http.createServer(async (req, res) => {
       /* 用户管理（仅管理员；成员仅可修改自己的学校/年级） */
       if (url.pathname === '/api/users' && req.method === 'POST') {
         const body = await readBody(req);
+        /* 修改自己的密码：任何已登录用户均可，需验证原密码 */
+        if (body.action === 'changepw') {
+          const u = findUser(user.username);
+          if (!u) return json(res, 401, { error: '登录状态异常，请重新登录' });
+          const oldPw = String(body.oldPassword || '');
+          const newPw = String(body.newPassword || '');
+          if (u.pwhash !== sha(u.salt + oldPw)) return json(res, 400, { error: '原密码不正确' });
+          if (newPw.length < 4) return json(res, 400, { error: '新密码至少 4 位' });
+          u.salt = rand(8); u.pwhash = sha(u.salt + newPw);
+          persist();
+          return json(res, 200, visibleState(user));
+        }
+        /* 管理员调整用户角色（提升为管理员 / 降为成员） */
+        if (body.action === 'setrole') {
+          if (user.role !== 'admin') return json(res, 403, { error: '只有管理员可以调整角色' });
+          const u = findUser(String(body.username || ''));
+          if (!u) return json(res, 404, { error: '用户不存在' });
+          const role = body.role === 'admin' ? 'admin' : 'member';
+          if (u.username === user.username && role !== 'admin') return json(res, 400, { error: '不能降级自己的管理员身份' });
+          u.role = role;
+          if (role === 'admin') { u.grade = ''; u.gradeYear = 0; }
+          persist();
+          return json(res, 200, visibleState(user));
+        }
         const selfProfile = body.action === 'profile' && String(body.username || user.username) === user.username;
         if (user.role !== 'admin' && !selfProfile) return json(res, 403, { error: '只有管理员可以管理用户' });
         if (body.action === 'add') {

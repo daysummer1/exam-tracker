@@ -546,7 +546,7 @@
         <span class="muted" style="margin-left:auto; align-self:center" id="ocrb-progress"></span>
       </div>
       <div id="ocrb-preview" style="flex:1; overflow:auto; margin-top:10px; border-top:1px dashed var(--border); padding-top:8px; min-height:120px"></div>
-      <p class="hint" style="margin-top:6px">仅生成<strong>当前登录用户</strong>的错题原题集。逐张识别以规避免费通道并发限制；识别结果仅保存在本页，刷新后需重新识别。打印/导出按「考试 → 题目」分组，含识别出的原题文本。</p>
+      <p class="hint" style="margin-top:6px">仅生成<strong>当前登录用户</strong>的错题原题集，每题带<strong>原题照片 + 识别文字</strong>（几何图/图表靠照片呈现）。逐张识别以规避免费通道并发限制；识别结果仅保存在本页，刷新后需重新识别。打印/导出按「考试 → 题目」分组。</p>
     </div>
   </div>
 </div>
@@ -1034,6 +1034,22 @@ function viewPhoto(src){
 /* ================= 错题原题集（批量 OCR + 打印/导出） ================= */
 function ocrAvailable(){ return !!(state.settings && state.settings.ocr && state.settings.ocr.configured); }
 const ocrCache = new Map();      /* 照片文件名 -> 识别文本（本页内存缓存，避免重复识别） */
+const ocrImgCache = new Map();   /* 照片文件名 -> dataURL（打印/导出 Word 时内嵌原图） */
+async function ensureOcrImgs(onProg){
+  const names = [...new Set(ocrResults.flatMap(r=>r.w.photos||[]))].filter(n=>!ocrImgCache.has(n));
+  let ok = 0, fail = 0;
+  for(let i=0;i<names.length;i++){
+    if(onProg) onProg(`加载原图 ${i+1}/${names.length}…`);
+    try{
+      const resp = await fetch('/api/photo/'+encodeURIComponent(names[i]), { credentials:'same-origin' });
+      if(!resp.ok) throw new Error('HTTP '+resp.status);
+      const blob = await resp.blob();
+      const url = await new Promise((rs,rj)=>{ const fr=new FileReader(); fr.onload=()=>rs(fr.result); fr.onerror=rj; fr.readAsDataURL(blob); });
+      ocrImgCache.set(names[i], url); ok++;
+    }catch(e){ fail++; }
+  }
+  return { ok, fail };
+}
 let ocrRunning = false, ocrCancel = false, ocrResults = [];
 function openOcrBatch(){
   if(!ocrAvailable()){ toast('OCR 未启用：请管理员在「数据管理 → OCR 设置」中配置'); return; }
@@ -1115,10 +1131,12 @@ function renderOcrPreview(){
   if(!ocrResults.length){ box.innerHTML = '<div class="empty">尚未识别。选择考试范围后点「开始识别」。</div>'; return; }
   box.innerHTML = ocrResults.map((r,i)=>{
     const w = r.w, ex = state.exams.find(e=>e.id===w.examId);
-    const body = r.text || (w.desc ? '（未识别到原题，错因描述：' + w.desc + '）' : '（无照片）');
-    return `<div style="margin-bottom:10px">
+    const imgs = (w.photos||[]).map(p=>`<img src="${photoSrc(p)}" style="max-width:100%; max-height:220px; border:1px solid var(--border); border-radius:6px; margin:4px 8px 4px 0; vertical-align:top">`).join('');
+    const body = r.text || (w.desc ? '（未识别到原题文字，错因描述：' + w.desc + '）' : '');
+    return `<div style="margin-bottom:12px; padding:10px; border:1px solid var(--border); border-radius:10px">
       <div class="muted" style="font-size:12px">#${i+1} ${esc(userName(w.owner))} · ${ex?esc(examTitle(ex)):'未关联考试'} · ${SUB[w.subject]?SUB[w.subject].name:''} · ${esc(w.no||'无题号')} · 【${esc(w.kp)}】${w.type?' · '+esc(w.type):''}${r.missing?' <span class="badge orange">部分照片未识别</span>':''}</div>
-      <div style="white-space:pre-wrap; font-size:13px; margin-top:2px">${esc(body)}</div>
+      ${imgs?`<div style="margin-top:6px">${imgs}</div>`:''}
+      ${body?`<div style="white-space:pre-wrap; font-size:13px; margin-top:6px; border-top:1px dashed var(--border); padding-top:6px">${esc(body)}</div>`:''}
     </div>`;
   }).join('');
 }
@@ -1132,8 +1150,11 @@ function ocrBuildHtml(){
     arr.forEach(r=>{
       idx++;
       const w = r.w;
-      const qt = r.text || (w.desc ? '（未识别到原题，错因描述：' + w.desc + '）' : '（无照片）');
-      body += `<div class="q"><div class="qh">${idx}. ${esc(userName(w.owner))}　${SUB[w.subject]?SUB[w.subject].name:''}　${esc(w.no||'')}　【${esc(w.kp)}】${w.type?'　'+esc(w.type):''}</div><div class="qt">${esc(qt)}</div></div>`;
+      const imgs = (w.photos||[]).map(p=>ocrImgCache.has(p)?`<img class="pimg" src="${ocrImgCache.get(p)}">`:'').join('');
+      const qt = r.text || (w.desc ? '（未识别到原题文字，错因描述：' + w.desc + '）' : '');
+      body += `<div class="q"><div class="qh">${idx}. ${esc(userName(w.owner))}　${SUB[w.subject]?SUB[w.subject].name:''}　${esc(w.no||'')}　【${esc(w.kp)}】${w.type?'　'+esc(w.type):''}</div>`
+        + (imgs?`<div class="pimgs">${imgs}</div>`:'')
+        + (qt?`<div class="qt">${esc(qt)}</div>`:'') + `</div>`;
     });
   });
   const examSel = document.getElementById('ocrb-exam');
@@ -1148,34 +1169,49 @@ function ocrBuildHtml(){
     h2{font-size:16px; border-left:4px solid #2563eb; padding-left:8px; margin:22px 0 8px}
     .q{margin-bottom:14px; padding:10px 12px; border:1px solid #ddd; border-radius:8px; page-break-inside:avoid}
     .qh{font-size:12px; color:#555; margin-bottom:6px}
-    .qt{font-size:14px; white-space:pre-wrap}
+    .pimgs{margin:4px 0}
+    .pimgs .pimg{max-width:100%; max-height:300px; margin:4px 8px 4px 0; border:1px solid #eee; border-radius:6px; vertical-align:top}
+    .qt{font-size:14px; white-space:pre-wrap; margin-top:4px}
+    .qt:empty{display:none}
     @media print { body{margin:0} }
   </style>
   <h1>${esc(myName)}的错题原题集</h1>
   <div class="meta">${esc(scopeName)}${SUB[subV]?' · '+SUB[subV].name:''} · 共 ${ocrResults.length} 题 · 生成于 ${new Date().toLocaleString('zh-CN')}</div>
   ${body}`;
 }
-function printOcrSet(){
+async function printOcrSet(){
   if(!ocrResults.length) return toast('请先完成识别');
+  const prog = document.getElementById('ocrb-progress');
+  prog.textContent = '准备原图…';
+  const r = await ensureOcrImgs(t=>{ prog.textContent = t; });
+  prog.textContent = r.fail ? `原图加载完成（${r.fail} 张失败，将跳过）` : '';
+  const html = ocrBuildHtml();
   const win = window.open('', '_blank');
-  if(!win) return toast('浏览器拦截了弹窗，请允许弹窗后重试');
-  win.document.write(ocrBuildHtml());
+  if(!win){ prog.textContent=''; return toast('浏览器拦截了弹窗，请允许弹窗后重试'); }
+  win.document.write(html);
   win.document.close();
   win.focus();
-  setTimeout(()=>{ try{ win.print(); }catch(e){} }, 500);
+  setTimeout(()=>{ try{ win.print(); }catch(e){} }, 600);
 }
-function exportOcrWord(){
+async function exportOcrWord(){
   if(!ocrResults.length) return toast('请先完成识别');
-  const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head>' + ocrBuildHtml() + '</head><body></body></html>';
-  const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  const examSel = document.getElementById('ocrb-exam');
-  const scope = examSel.value==='all' ? '所有考试' : ((examSel.options[examSel.selectedIndex]||{}).text || '错题集');
-  a.download = userName(me.username) + '_错题原题集_' + scope + '_' + new Date().toISOString().slice(0,10) + '.doc';
-  document.body.appendChild(a); a.click(); a.remove();
-  setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
-  toast('已导出 Word 文档 ✓');
+  const prog = document.getElementById('ocrb-progress');
+  const btn = document.getElementById('ocrb-word');
+  prog.textContent = '准备原图…'; btn.disabled = true;
+  try{
+    const r = await ensureOcrImgs(t=>{ prog.textContent = t; });
+    prog.textContent = r.fail ? `已导出（${r.fail} 张原图加载失败未包含）` : '已导出 Word 文档 ✓';
+    const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head>' + ocrBuildHtml() + '</head><body></body></html>';
+    const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    const examSel = document.getElementById('ocrb-exam');
+    const scope = examSel.value==='all' ? '所有考试' : ((examSel.options[examSel.selectedIndex]||{}).text || '错题集');
+    a.download = userName(me.username) + '_错题原题集_' + scope + '_' + new Date().toISOString().slice(0,10) + '.doc';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+  }catch(e){ prog.textContent = ''; toast('导出失败：'+e.message); }
+  finally{ btn.disabled = ocrResults.length===0; }
 }
 
 /* ---------- OCR 管理员设置 ---------- */

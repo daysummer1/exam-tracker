@@ -539,6 +539,12 @@
             <option value="">全部科目</option>
             <option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option>
           </select>
+          <select id="ocrb-grade" style="width:110px" title="题库搜题按年级检索；账号未设年级时请手动选择">
+            <option value="">搜题年级…</option>
+            <option>一年级</option><option>二年级</option><option>三年级</option><option>四年级</option><option>五年级</option><option>六年级</option>
+            <option>七年级</option><option>八年级</option><option>九年级</option>
+            <option>高一</option><option>高二</option><option>高三</option>
+          </select>
         </div>
         <button class="btn ghost" onclick="openOcrBatch()">刷新统计</button>
         <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:13px; padding-bottom:6px" title="擦除照片中的红/蓝笔迹与铅笔灰，输出黑白印刷体效果；识别文字同时忽略手写内容">
@@ -1165,6 +1171,9 @@ function openOcrBatch(){
   sel.innerHTML = opts.join('');
   sel.value = [...sel.options].some(o=>o.value===prev) ? prev : 'all';
   document.getElementById('ocrb-subject').value = document.getElementById('filter-subject').value || '';
+  /* 搜题年级默认取当前用户年级；未设年级时需手动选择，否则搜题会跳过 */
+  const gsel = document.getElementById('ocrb-grade');
+  gsel.value = (me.grade && [...gsel.options].some(o=>o.value===me.grade)) ? me.grade : '';
   ocrbRefreshStat();
   document.getElementById('ocrb-progress').textContent = '';
   renderOcrPreview();
@@ -1253,7 +1262,7 @@ async function startOcrBatch(){
       const t = ocrPolishCache.get(raw) || raw;
       prog.textContent = `搜题库 ${sd+1}/${toSearch.length} …`;
       try{
-        const r = await api('/api/ocr/search', { text: t, grade: examGrade(w), subject: w.subject });
+        const r = await api('/api/ocr/search', { text: t, grade: (document.getElementById('ocrb-grade')||{}).value || examGrade(w), subject: w.subject });
         ocrSearchCache.set(t, r);
       }catch(e){ /* 搜题失败不影响流程，保留 AI 文字 */ }
       sd++;

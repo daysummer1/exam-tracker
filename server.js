@@ -359,7 +359,7 @@ async function ocrZhipu(mime, b64) {
   return String(txt).trim();
 }
 
-const POLISH_PROMPT = '下面是从错题照片 OCR 转写的题目文字。请把它整理成规范的标准题面：\n1. 修正错别字和 OCR 识别错误（如数字被写成汉字、断句错误、漏字），依据上下文补全明显缺失的字词，但不得改变题意、不得添加题目中不存在的条件或数据；\n2. 数学式子用规范写法：平方写 ^2，分数写 a/b，根号写 √，角度用 ∠；\n3. 保留题号、小问编号和选项标号（A. B. C. D.）；\n4. 【图：××图】标注原样保留，位置不变；\n5. 适当分段排版；\n6. 只输出整理后的题面本身，不要任何解释、点评或前后缀。';
+const POLISH_PROMPT = '下面是从错题照片 OCR 转写的题目文字。请把它整理成规范的标准题面：\n1. 修正错别字和 OCR 识别错误（如数字被写成汉字、断句错误、漏字），依据上下文补全明显缺失的字词，但不得改变题意、不得添加题目中不存在的条件或数据；\n2. 数学式子用规范写法：平方写 ^2，分数写 a/b，根号写 √，角度用 ∠；\n3. 保留题号、小问编号和选项标号（A. B. C. D.）；\n4. 题目中的空括号（ ）、横线____等填空处必须保持空白原样，绝对不要推理或填写答案进去；\n5. 【图：××图】标注原样保留，位置不变；\n6. 适当分段排版；\n7. 只输出整理后的题面本身，不要任何解释、点评或前后缀。';
 
 async function polishText(raw) {
   const c = ocrCfg();
@@ -401,7 +401,8 @@ async function xkbSearch(text, grade, subject) {
   if (!c.xkbKey) throw new Error('题库搜题未配置 Key');
   const gradeId = GRADE_ID[grade];
   if (!gradeId) return { found: false, reason: '年级「' + grade + '」暂不支持搜题' };
-  const bodyObj = { keyword: String(text || '').slice(0, 80), gradeId };
+  const cleanKw = String(text || '').replace(/【图：[^】]*】/g, ' ').replace(/\s+/g, ' ').trim();
+  const bodyObj = { keyword: cleanKw.slice(0, 80), gradeId };
   const sid = SUBJECT_ID[subject];
   if (sid) bodyObj.subjectId = sid;
   const r = await httpPostJson('api.xuekubao.com', '/api/v1/search', { 'X-API-Key': c.xkbKey }, bodyObj, 30000);

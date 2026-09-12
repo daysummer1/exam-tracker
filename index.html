@@ -546,7 +546,7 @@
         <span class="muted" style="margin-left:auto; align-self:center" id="ocrb-progress"></span>
       </div>
       <div id="ocrb-preview" style="flex:1; overflow:auto; margin-top:10px; border-top:1px dashed var(--border); padding-top:8px; min-height:120px"></div>
-      <p class="hint" style="margin-top:6px">逐张识别以规避免费通道并发限制；识别结果仅保存在本页，刷新后需重新识别。打印/导出按「考试 → 题目」分组，含识别出的原题文本，学生姓名按当前查看权限自动脱敏。</p>
+      <p class="hint" style="margin-top:6px">仅生成<strong>当前登录用户</strong>的错题原题集。逐张识别以规避免费通道并发限制；识别结果仅保存在本页，刷新后需重新识别。打印/导出按「考试 → 题目」分组，含识别出的原题文本。</p>
     </div>
   </div>
 </div>
@@ -1037,10 +1037,15 @@ const ocrCache = new Map();      /* 照片文件名 -> 识别文本（本页内�
 let ocrRunning = false, ocrCancel = false, ocrResults = [];
 function openOcrBatch(){
   if(!ocrAvailable()){ toast('OCR 未启用：请管理员在「数据管理 → OCR 设置」中配置'); return; }
+  /* 只看当前用户自己的错题：考试下拉仅列出当前用户有错题的考试 */
+  const myWrongs = (state.wrongs||[]).filter(w=>w.owner===me.username);
+  const myExamIds = [...new Set(myWrongs.map(w=>w.examId).filter(Boolean))];
   const sel = document.getElementById('ocrb-exam');
+  const prev = sel.value;
   const opts = ['<option value="all">所有考试</option>'];
-  (state.exams||[]).forEach(e=>opts.push(`<option value="${esc(e.id)}">${esc(examTitle(e))}</option>`));
+  (state.exams||[]).forEach(e=>{ if(myExamIds.includes(e.id)) opts.push(`<option value="${esc(e.id)}">${esc(examTitle(e))}</option>`); });
   sel.innerHTML = opts.join('');
+  sel.value = [...sel.options].some(o=>o.value===prev) ? prev : 'all';
   document.getElementById('ocrb-subject').value = document.getElementById('filter-subject').value || '';
   ocrbRefreshStat();
   document.getElementById('ocrb-progress').textContent = '';
@@ -1050,7 +1055,7 @@ function openOcrBatch(){
 function ocrbScopeWrongs(){
   const examId = document.getElementById('ocrb-exam').value;
   const sub = document.getElementById('ocrb-subject').value;
-  return fArr('wrongs').filter(w=>(examId==='all'||w.examId===examId)&&(!sub||w.subject===sub));
+  return (state.wrongs||[]).filter(w=>w.owner===me.username&&(examId==='all'||w.examId===examId)&&(!sub||w.subject===sub));
 }
 function ocrbRefreshStat(){
   const list = ocrbScopeWrongs();
@@ -1134,6 +1139,7 @@ function ocrBuildHtml(){
   const examSel = document.getElementById('ocrb-exam');
   const scopeName = examSel.value==='all' ? '所有考试' : ((examSel.options[examSel.selectedIndex]||{}).text || '');
   const subV = document.getElementById('ocrb-subject').value;
+  const myName = userName(me.username);
   return `<meta charset="utf-8"><title>错题原题集</title>
   <style>
     body{font-family:'Microsoft YaHei','PingFang SC',sans-serif; margin:24px auto; max-width:760px; color:#111; line-height:1.7}
@@ -1145,7 +1151,7 @@ function ocrBuildHtml(){
     .qt{font-size:14px; white-space:pre-wrap}
     @media print { body{margin:0} }
   </style>
-  <h1>错题原题集</h1>
+  <h1>${esc(myName)}的错题原题集</h1>
   <div class="meta">${esc(scopeName)}${SUB[subV]?' · '+SUB[subV].name:''} · 共 ${ocrResults.length} 题 · 生成于 ${new Date().toLocaleString('zh-CN')}</div>
   ${body}`;
 }
@@ -1166,7 +1172,7 @@ function exportOcrWord(){
   a.href = URL.createObjectURL(blob);
   const examSel = document.getElementById('ocrb-exam');
   const scope = examSel.value==='all' ? '所有考试' : ((examSel.options[examSel.selectedIndex]||{}).text || '错题集');
-  a.download = '错题原题集_' + scope + '_' + new Date().toISOString().slice(0,10) + '.doc';
+  a.download = userName(me.username) + '_错题原题集_' + scope + '_' + new Date().toISOString().slice(0,10) + '.doc';
   document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
   toast('已导出 Word 文档 ✓');

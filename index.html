@@ -549,7 +549,7 @@
         <span class="muted" style="margin-left:auto; align-self:center" id="ocrb-progress"></span>
       </div>
       <div id="ocrb-preview" style="flex:1; overflow:auto; margin-top:10px; border-top:1px dashed var(--border); padding-top:8px; min-height:120px"></div>
-      <p class="hint" style="margin-top:6px">仅生成<strong>当前登录用户</strong>的错题原题集，每题带<strong>净化后的题目照片（已擦除手写痕迹）+ 识别文字（忽略手写）</strong>，几何图/图表靠照片呈现。红/蓝笔迹可完全擦除；铅笔字会尽量淡化。「去除手写痕迹」取消勾选则用原始照片。识别结果仅保存在本页，刷新后需重新识别。</p>
+      <p class="hint" style="margin-top:6px">仅生成<strong>当前登录用户</strong>的错题原题集。流程：OCR 识别 → <strong>AI 重排文字</strong>（修正错字、规范题面）→ <strong>照片去手写</strong>（红/蓝笔擦除+黑白化，可用开关关闭），每题带净化照片+规范文字。铅笔字尽量淡化；识别与重排结果仅保存在本页。</p>
     </div>
   </div>
 </div>
@@ -1038,6 +1038,7 @@ function viewPhoto(src){
 function ocrAvailable(){ return !!(state.settings && state.settings.ocr && state.settings.ocr.configured); }
 const ocrCache = new Map();      /* 照片文件名 -> 识别文本（本页内存缓存，避免重复识别） */
 const ocrImgCache = new Map();   /* 照片文件名 -> dataURL（打印/导出 Word 时内嵌原图） */
+const ocrPolishCache = new Map(); /* OCR原文 -> AI重排后的规范题面 */
 /* 照片净化：擦除手写痕迹，输出黑白印刷体效果（喵喵机风格）
    原理：彩色笔迹（红/蓝笔）色度高中 → 擦白；其余按亮度二值化，铅笔灰被淡化，只留印刷黑 */
 function cleanHandwriting(img){
@@ -1162,15 +1163,37 @@ async function startOcrBatch(){
     document.getElementById('ocrb-start').disabled = false;
     document.getElementById('ocrb-stop').style.display='none';
   }
-  ocrResults = wrongs.map(w=>({
-    w,
-    text: (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n'),
-    missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(p))
-  }));
+  ocrResults = wrongs.map(w=>{
+    const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+    return {
+      w,
+      text: ocrPolishCache.get(raw) || raw,
+      missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(p))
+    };
+  });
   prog.textContent = ocrCancel ? `已停止：完成 ${done}/${jobs.length} 张（失败 ${fail}）` : `识别完成：${jobs.length} 张照片${fail?`，失败 ${fail} 张（可重新开始重试）`:''}`;
+  /* AI 文字重排：把 OCR 原文整理成规范题面（免费模型，逐题进行） */
+  if(!ocrCancel){
+    const toPolish = wrongs.filter(w=>{
+      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+      return raw && raw!=='【无法识别】' && !ocrPolishCache.has(raw);
+    });
+    let pd = 0;
+    for(const w of toPolish){
+      if(ocrCancel) break;
+      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+      prog.textContent = `AI 重排题目 ${pd+1}/${toPolish.length} …`;
+      try{
+        const r = await api('/api/ocr', { polish:true, text: raw });
+        if(r.text) ocrPolishCache.set(raw, r.text.trim());
+      }catch(e){ /* 重排失败保留原文 */ }
+      pd++;
+      await new Promise(rs=>setTimeout(rs, 200));
+    }
+  }
   if(!ocrCancel){
     const ir = await ensureOcrImgs(t=>{ prog.textContent = t; });
-    prog.textContent = ir.fail ? `识别完成；${ir.fail} 张照片净化失败，将显示原片` : '处理完成 ✓（照片已去除手写痕迹）';
+    prog.textContent = ir.fail ? `完成；${ir.fail} 张照片净化失败，将显示原片` : '处理完成 ✓（AI 重排文字 + 照片去手写）';
   }
   renderOcrPreview();
   document.getElementById('ocrb-print').disabled = ocrResults.length===0;

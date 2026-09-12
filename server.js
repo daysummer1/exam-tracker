@@ -358,6 +358,30 @@ async function ocrZhipu(mime, b64) {
   return String(txt).trim();
 }
 
+const POLISH_PROMPT = '下面是从错题照片 OCR 转写的题目文字。请把它整理成规范的标准题面：\n1. 修正错别字和 OCR 识别错误（如数字被写成汉字、断句错误、漏字），依据上下文补全明显缺失的字词，但不得改变题意、不得添加题目中不存在的条件或数据；\n2. 数学式子用规范写法：平方写 ^2，分数写 a/b，根号写 √，角度用 ∠；\n3. 保留题号、小问编号和选项标号（A. B. C. D.）；\n4. 【图：××图】标注原样保留，位置不变；\n5. 适当分段排版；\n6. 只输出整理后的题面本身，不要任何解释、点评或前后缀。';
+
+async function polishText(raw) {
+  const c = ocrCfg();
+  if (c.provider !== 'zhipu' || !c.zhipuKey) throw new Error('文字重排需要智谱通道');
+  const r = await httpPostJson('open.bigmodel.cn', '/api/paas/v4/chat/completions',
+    { Authorization: 'Bearer ' + c.zhipuKey },
+    {
+      model: 'glm-4-flash',
+      messages: [
+        { role: 'system', content: POLISH_PROMPT },
+        { role: 'user', content: raw }
+      ],
+      temperature: 0.1, max_tokens: 1024
+    });
+  let j = null; try { j = JSON.parse(r.buf); } catch (e) {}
+  const txt = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  if (!txt) {
+    const msg = j && j.error && j.error.message;
+    throw new Error('重排接口异常: HTTP ' + r.code + (msg ? ' ' + msg : ' ' + r.buf.slice(0, 120)));
+  }
+  return String(txt).trim();
+}
+
 /* 腾讯云 TC3-HMAC-SHA256 签名（零依赖实现） */
 async function ocrTencent(b64) {
   const c = ocrCfg();
@@ -469,6 +493,17 @@ const server = http.createServer(async (req, res) => {
       if (url.pathname === '/api/ocr' && req.method === 'POST') {
         if (!ocrConfigured()) return json(res, 400, { error: 'OCR 未启用：请管理员在「数据管理 → OCR 设置」中配置识别通道' });
         const body = await readBody(req);
+        /* AI 文字重排：把 OCR 原始文字整理成规范题面 */
+        if (body.polish) {
+          const raw = String(body.text || '').trim();
+          if (!raw || raw === '【无法识别】') return json(res, 400, { error: '没有可重排的文字' });
+          try {
+            const text = await polishText(raw);
+            return json(res, 200, { ok: true, text });
+          } catch (e) {
+            return json(res, 502, { error: 'AI 重排失败：' + (e.message || e) });
+          }
+        }
         let mime = 'image/jpeg', b64 = '';
         if (typeof body.data === 'string' && body.data.startsWith('data:image/')) {
           const m = body.data.match(/^data:(image\/[a-z+]+);base64,([A-Za-z0-9+/=]+)$/);

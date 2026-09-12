@@ -76,8 +76,6 @@
   .photo-thumb{position:relative; width:84px; height:84px; border-radius:10px; overflow:hidden; border:1px solid var(--border); background:#f3f4f6;}
   .photo-thumb img{width:100%; height:100%; object-fit:cover; cursor:zoom-in; display:block;}
   .photo-thumb .photo-del{position:absolute; top:2px; right:2px; width:20px; height:20px; border:none; border-radius:50%; background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:20px; text-align:center; cursor:pointer; padding:0;}
-  .photo-thumb .photo-ocr{position:absolute; bottom:2px; right:2px; width:24px; height:20px; border:none; border-radius:6px; background:rgba(20,110,180,.85); color:#fff; font-size:11px; line-height:20px; text-align:center; cursor:pointer; padding:0;}
-  .photo-thumb .photo-ocr:disabled{opacity:.5; cursor:wait;}
   .photo-add{width:84px; height:84px; border:1.5px dashed #9ca3af; border-radius:10px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; cursor:pointer; color:var(--muted); font-size:12px; text-align:center; background:#fafbfc;}
   .photo-add:active{background:var(--primary-light);}
   .photo-add .cam{font-size:22px; line-height:1;}
@@ -310,6 +308,7 @@
           <option value="" data-page-node-id="KoEVhXkusX8GHZdUoZJCjA">全部状态</option>
           <option value="0" data-page-node-id="oJJ5YmxbGCvfeoo5EWHa45">未订正</option><option value="1" data-page-node-id="xqgM8GOTi3mQaVzyxQ66H7">已订正未重做</option><option value="2" data-page-node-id="PH3ZPnJCviyFl78BndCLFg">重做通过</option>
         </select>
+        <button class="btn ghost" id="ocr-batch-btn" style="margin-left:auto; display:none" onclick="openOcrBatch()" title="批量识别错题照片中的原题，可打印或导出 Word">🖨️ 原题集（OCR）</button>
       </div>
       <div id="wrong-list" data-page-node-id="7ZUwUPoE0RVAWbWForWGNq"></div>
     </div>
@@ -520,17 +519,34 @@
   <div class="toast" id="toast" data-page-node-id="PZCspJl4byAL291oLO5ELj"></div>
   <div id="photo-viewer" onclick="this.style.display='none'"><img id="photo-viewer-img" alt="题目照片大图"></div>
 
-  <!-- OCR 识别结果弹窗 -->
-  <div id="ocr-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:60; align-items:center; justify-content:center" onclick="if(event.target===this)this.style.display='none'">
-    <div class="card" style="width:min(92vw,560px); max-height:82vh; display:flex; flex-direction:column; margin:0">
-      <h2 style="margin-bottom:8px">🔍 识别结果（可编辑）</h2>
-      <textarea id="ocr-text" style="flex:1; min-height:180px; resize:vertical"></textarea>
-      <div class="flex" style="justify-content:flex-end; margin-top:10px; gap:8px">
-        <button class="btn ghost" onclick="copyOcr()">复制</button>
-        <button class="btn ghost" onclick="document.getElementById('ocr-modal').style.display='none'">关闭</button>
-        <button class="btn" onclick="ocrIntoDesc()">填入题目描述</button>
+  <!-- 错题原题集：批量 OCR + 打印/导出 -->
+  <div id="ocr-batch" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:60; align-items:center; justify-content:center" onclick="if(event.target===this&&!ocrRunning)this.style.display='none'">
+    <div class="card" style="width:min(94vw,700px); max-height:88vh; display:flex; flex-direction:column; margin:0">
+      <h2 style="margin-bottom:8px">🖨️ 错题原题集（OCR 识别）</h2>
+      <div class="flex" style="gap:10px; flex-wrap:wrap; align-items:end">
+        <div>
+          <label>考试范围</label>
+          <select id="ocrb-exam" style="min-width:210px" onchange="ocrbRefreshStat()"></select>
+        </div>
+        <div>
+          <label>科目</label>
+          <select id="ocrb-subject" style="width:110px" onchange="ocrbRefreshStat()">
+            <option value="">全部科目</option>
+            <option value="chinese">语文</option><option value="math">数学</option><option value="english">英语</option>
+          </select>
+        </div>
+        <button class="btn ghost" onclick="openOcrBatch()">刷新统计</button>
       </div>
-      <p class="hint" style="margin-top:8px">「填入题目描述」会追加到录入表单的描述框中，可修改后再保存。识别结果仅供参考，请核对后再用。</p>
+      <div id="ocrb-stat" class="hint" style="margin:8px 0 6px"></div>
+      <div class="flex" style="gap:8px; flex-wrap:wrap">
+        <button class="btn" id="ocrb-start" onclick="startOcrBatch()">开始识别</button>
+        <button class="btn ghost" id="ocrb-stop" onclick="ocrCancel=true" style="display:none">⏹ 停止</button>
+        <button class="btn ghost" id="ocrb-print" onclick="printOcrSet()" disabled>🖨️ 打印</button>
+        <button class="btn ghost" id="ocrb-word" onclick="exportOcrWord()" disabled>⬇️ 导出 Word</button>
+        <span class="muted" style="margin-left:auto; align-self:center" id="ocrb-progress"></span>
+      </div>
+      <div id="ocrb-preview" style="flex:1; overflow:auto; margin-top:10px; border-top:1px dashed var(--border); padding-top:8px; min-height:120px"></div>
+      <p class="hint" style="margin-top:6px">逐张识别以规避免费通道并发限制；识别结果仅保存在本页，刷新后需重新识别。打印/导出按「考试 → 题目」分组，含识别出的原题文本，学生姓名按当前查看权限自动脱敏。</p>
     </div>
   </div>
 </div>
@@ -1001,7 +1017,6 @@ function renderWrongPhotoGrid(){
   const thumbs = pendingWrongPhotos.map((p,i)=>`
     <div class="photo-thumb">
       <img src="${photoSrc(p)}" onclick="viewPhoto('${photoSrc(p)}')" alt="题目照片${i+1}">
-      ${ocrAvailable()?`<button class="photo-ocr" onclick="ocrPhoto(${i})" title="识别照片中的题目文字">🔍</button>`:''}
       <button class="photo-del" onclick="removePendingPhoto(${i})" title="移除">✕</button>
     </div>`).join('');
   const add = pendingWrongPhotos.length<PHOTO_MAX
@@ -1016,41 +1031,145 @@ function viewPhoto(src){
   document.getElementById('photo-viewer').style.display = 'flex';
 }
 
-/* ================= 题目照片 OCR ================= */
+/* ================= 错题原题集（批量 OCR + 打印/导出） ================= */
 function ocrAvailable(){ return !!(state.settings && state.settings.ocr && state.settings.ocr.configured); }
-let ocrBusy = false;
-async function ocrPhoto(i){
-  if(ocrBusy) return toast('正在识别中，请稍候…');
-  const p = pendingWrongPhotos[i];
-  if(!p) return;
+const ocrCache = new Map();      /* 照片文件名 -> 识别文本（本页内存缓存，避免重复识别） */
+let ocrRunning = false, ocrCancel = false, ocrResults = [];
+function openOcrBatch(){
   if(!ocrAvailable()){ toast('OCR 未启用：请管理员在「数据管理 → OCR 设置」中配置'); return; }
-  const btn = event && event.target;
-  ocrBusy = true;
-  if(btn) btn.disabled = true;
-  toast('正在识别照片文字…');
+  const sel = document.getElementById('ocrb-exam');
+  const opts = ['<option value="all">所有考试</option>'];
+  (state.exams||[]).forEach(e=>opts.push(`<option value="${esc(e.id)}">${esc(examTitle(e))}</option>`));
+  sel.innerHTML = opts.join('');
+  document.getElementById('ocrb-subject').value = document.getElementById('filter-subject').value || '';
+  ocrbRefreshStat();
+  document.getElementById('ocrb-progress').textContent = '';
+  renderOcrPreview();
+  document.getElementById('ocr-batch').style.display='flex';
+}
+function ocrbScopeWrongs(){
+  const examId = document.getElementById('ocrb-exam').value;
+  const sub = document.getElementById('ocrb-subject').value;
+  return fArr('wrongs').filter(w=>(examId==='all'||w.examId===examId)&&(!sub||w.subject===sub));
+}
+function ocrbRefreshStat(){
+  const list = ocrbScopeWrongs();
+  const withPhotos = list.filter(w=>w.photos&&w.photos.length);
+  let total=0, cached=0;
+  withPhotos.forEach(w=>(w.photos||[]).forEach(p=>{ total++; if(ocrCache.has(p)) cached++; }));
+  const noPhoto = list.length - withPhotos.length;
+  document.getElementById('ocrb-stat').innerHTML =
+    `共 <b>${list.length}</b> 题错题（${withPhotos.length} 题带照片），待识别照片 <b>${total}</b> 张，本页已缓存 <b>${cached}</b> 张` +
+    (noPhoto ? `；${noPhoto} 题无照片，将用错因描述替代` : '');
+}
+async function startOcrBatch(){
+  if(ocrRunning) return;
+  const wrongs = ocrbScopeWrongs();
+  if(!wrongs.length) return toast('该范围内没有错题');
+  ocrRunning = true; ocrCancel = false; ocrResults = [];
+  document.getElementById('ocrb-start').disabled = true;
+  document.getElementById('ocrb-stop').style.display='';
+  const jobs = [];
+  wrongs.forEach(w=>(w.photos||[]).forEach(p=>jobs.push(p)));
+  const prog = document.getElementById('ocrb-progress');
+  let done = 0, fail = 0;
   try{
-    const body = p.startsWith('file:') ? { name: p.slice(5) } : { data: p };
-    const r = await api('/api/ocr', body);
-    document.getElementById('ocr-text').value = (r.text || '').trim();
-    document.getElementById('ocr-modal').style.display = 'flex';
-  }catch(e){ toast('识别失败：'+e.message); }
-  finally{ ocrBusy = false; if(btn) btn.disabled = false; }
-}
-function ocrIntoDesc(){
-  const t = document.getElementById('ocr-text').value.trim();
-  const d = document.getElementById('wrong-desc');
-  if(d && t) d.value = d.value.trim() ? (d.value.trim() + '\n' + t) : t;
-  document.getElementById('ocr-modal').style.display = 'none';
-  toast('已填入题目描述 ✓');
-}
-function copyOcr(){
-  const t = document.getElementById('ocr-text').value;
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(t).then(()=>toast('已复制 ✓'), ()=>toast('复制失败，请手动选择文本'));
-  }else{
-    const ta = document.getElementById('ocr-text'); ta.select();
-    try{ document.execCommand('copy'); toast('已复制 ✓'); }catch(e){ toast('复制失败，请手动选择文本'); }
+    for(const name of jobs){
+      if(ocrCancel) break;
+      prog.textContent = `识别中 ${done+1}/${jobs.length} …`;
+      try{
+        if(!ocrCache.has(name)){
+          const r = await api('/api/ocr', { name });
+          ocrCache.set(name, (r.text||'').trim());
+          await new Promise(rs=>setTimeout(rs, 250));   /* 免费通道有并发限制，逐张+间隔 */
+        }
+      }catch(e){
+        fail++;
+        prog.textContent = `第 ${done+1} 张失败：${e.message}`;
+        await new Promise(rs=>setTimeout(rs, 500));
+      }
+      done++;
+    }
+  } finally {
+    ocrRunning = false;
+    document.getElementById('ocrb-start').disabled = false;
+    document.getElementById('ocrb-stop').style.display='none';
   }
+  ocrResults = wrongs.map(w=>({
+    w,
+    text: (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n'),
+    missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(p))
+  }));
+  prog.textContent = ocrCancel ? `已停止：完成 ${done}/${jobs.length} 张（失败 ${fail}）` : `识别完成：${jobs.length} 张照片${fail?`，失败 ${fail} 张（可重新开始重试）`:''}`;
+  renderOcrPreview();
+  document.getElementById('ocrb-print').disabled = ocrResults.length===0;
+  document.getElementById('ocrb-word').disabled = ocrResults.length===0;
+}
+function renderOcrPreview(){
+  const box = document.getElementById('ocrb-preview');
+  if(!ocrResults.length){ box.innerHTML = '<div class="empty">尚未识别。选择考试范围后点「开始识别」。</div>'; return; }
+  box.innerHTML = ocrResults.map((r,i)=>{
+    const w = r.w, ex = state.exams.find(e=>e.id===w.examId);
+    const body = r.text || (w.desc ? '（未识别到原题，错因描述：' + w.desc + '）' : '（无照片）');
+    return `<div style="margin-bottom:10px">
+      <div class="muted" style="font-size:12px">#${i+1} ${esc(userName(w.owner))} · ${ex?esc(examTitle(ex)):'未关联考试'} · ${SUB[w.subject]?SUB[w.subject].name:''} · ${esc(w.no||'无题号')} · 【${esc(w.kp)}】${w.type?' · '+esc(w.type):''}${r.missing?' <span class="badge orange">部分照片未识别</span>':''}</div>
+      <div style="white-space:pre-wrap; font-size:13px; margin-top:2px">${esc(body)}</div>
+    </div>`;
+  }).join('');
+}
+function ocrBuildHtml(){
+  const groups = new Map();
+  ocrResults.forEach(r=>{ const key = r.w.examId||''; if(!groups.has(key)) groups.set(key, []); groups.get(key).push(r); });
+  let idx = 0, body = '';
+  groups.forEach((arr, examId)=>{
+    const ex = state.exams.find(e=>e.id===examId);
+    body += `<h2>${esc(ex?examTitle(ex):'未关联考试')}</h2>`;
+    arr.forEach(r=>{
+      idx++;
+      const w = r.w;
+      const qt = r.text || (w.desc ? '（未识别到原题，错因描述：' + w.desc + '）' : '（无照片）');
+      body += `<div class="q"><div class="qh">${idx}. ${esc(userName(w.owner))}　${SUB[w.subject]?SUB[w.subject].name:''}　${esc(w.no||'')}　【${esc(w.kp)}】${w.type?'　'+esc(w.type):''}</div><div class="qt">${esc(qt)}</div></div>`;
+    });
+  });
+  const examSel = document.getElementById('ocrb-exam');
+  const scopeName = examSel.value==='all' ? '所有考试' : ((examSel.options[examSel.selectedIndex]||{}).text || '');
+  const subV = document.getElementById('ocrb-subject').value;
+  return `<meta charset="utf-8"><title>错题原题集</title>
+  <style>
+    body{font-family:'Microsoft YaHei','PingFang SC',sans-serif; margin:24px auto; max-width:760px; color:#111; line-height:1.7}
+    h1{font-size:20px; text-align:center; margin-bottom:4px}
+    .meta{text-align:center; color:#666; font-size:12px; margin-bottom:18px}
+    h2{font-size:16px; border-left:4px solid #2563eb; padding-left:8px; margin:22px 0 8px}
+    .q{margin-bottom:14px; padding:10px 12px; border:1px solid #ddd; border-radius:8px; page-break-inside:avoid}
+    .qh{font-size:12px; color:#555; margin-bottom:6px}
+    .qt{font-size:14px; white-space:pre-wrap}
+    @media print { body{margin:0} }
+  </style>
+  <h1>错题原题集</h1>
+  <div class="meta">${esc(scopeName)}${SUB[subV]?' · '+SUB[subV].name:''} · 共 ${ocrResults.length} 题 · 生成于 ${new Date().toLocaleString('zh-CN')}</div>
+  ${body}`;
+}
+function printOcrSet(){
+  if(!ocrResults.length) return toast('请先完成识别');
+  const win = window.open('', '_blank');
+  if(!win) return toast('浏览器拦截了弹窗，请允许弹窗后重试');
+  win.document.write(ocrBuildHtml());
+  win.document.close();
+  win.focus();
+  setTimeout(()=>{ try{ win.print(); }catch(e){} }, 500);
+}
+function exportOcrWord(){
+  if(!ocrResults.length) return toast('请先完成识别');
+  const html = '<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word"><head>' + ocrBuildHtml() + '</head><body></body></html>';
+  const blob = new Blob(['\ufeff', html], { type: 'application/msword;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  const examSel = document.getElementById('ocrb-exam');
+  const scope = examSel.value==='all' ? '所有考试' : ((examSel.options[examSel.selectedIndex]||{}).text || '错题集');
+  a.download = '错题原题集_' + scope + '_' + new Date().toISOString().slice(0,10) + '.doc';
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(a.href), 3000);
+  toast('已导出 Word 文档 ✓');
 }
 
 /* ---------- OCR 管理员设置 ---------- */
@@ -1135,6 +1254,8 @@ function statusBadge(f){
   return '<span class="badge red">未订正</span>';
 }
 function renderWrongBook(){
+  const ob = document.getElementById('ocr-batch-btn');
+  if(ob) ob.style.display = ocrAvailable() ? '' : 'none';
   const fs = document.getElementById('filter-subject').value;
   const fst = document.getElementById('filter-status').value;
   const list = fArr('wrongs').filter(w=>(!fs||w.subject===fs)&&(fst===''||String(w.fixed)===fst));

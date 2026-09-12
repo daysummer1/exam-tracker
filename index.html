@@ -536,6 +536,9 @@
           </select>
         </div>
         <button class="btn ghost" onclick="openOcrBatch()">刷新统计</button>
+        <label style="display:flex; align-items:center; gap:5px; cursor:pointer; font-size:13px; padding-bottom:6px" title="擦除照片中的红/蓝笔迹与铅笔灰，输出黑白印刷体效果；识别文字同时忽略手写内容">
+          <input type="checkbox" id="ocrb-clean" checked onchange="onOcrCleanToggle()"> 去除手写痕迹
+        </label>
       </div>
       <div id="ocrb-stat" class="hint" style="margin:8px 0 6px"></div>
       <div class="flex" style="gap:8px; flex-wrap:wrap">
@@ -546,7 +549,7 @@
         <span class="muted" style="margin-left:auto; align-self:center" id="ocrb-progress"></span>
       </div>
       <div id="ocrb-preview" style="flex:1; overflow:auto; margin-top:10px; border-top:1px dashed var(--border); padding-top:8px; min-height:120px"></div>
-      <p class="hint" style="margin-top:6px">仅生成<strong>当前登录用户</strong>的错题原题集，每题带<strong>原题照片 + 识别文字</strong>（几何图/图表靠照片呈现）。逐张识别以规避免费通道并发限制；识别结果仅保存在本页，刷新后需重新识别。打印/导出按「考试 → 题目」分组。</p>
+      <p class="hint" style="margin-top:6px">仅生成<strong>当前登录用户</strong>的错题原题集，每题带<strong>净化后的题目照片（已擦除手写痕迹）+ 识别文字（忽略手写）</strong>，几何图/图表靠照片呈现。红/蓝笔迹可完全擦除；铅笔字会尽量淡化。「去除手写痕迹」取消勾选则用原始照片。识别结果仅保存在本页，刷新后需重新识别。</p>
     </div>
   </div>
 </div>
@@ -1035,20 +1038,63 @@ function viewPhoto(src){
 function ocrAvailable(){ return !!(state.settings && state.settings.ocr && state.settings.ocr.configured); }
 const ocrCache = new Map();      /* 照片文件名 -> 识别文本（本页内存缓存，避免重复识别） */
 const ocrImgCache = new Map();   /* 照片文件名 -> dataURL（打印/导出 Word 时内嵌原图） */
+/* 照片净化：擦除手写痕迹，输出黑白印刷体效果（喵喵机风格）
+   原理：彩色笔迹（红/蓝笔）色度高中 → 擦白；其余按亮度二值化，铅笔灰被淡化，只留印刷黑 */
+function cleanHandwriting(img){
+  const MAXW = 1200;
+  const scale = Math.min(1, MAXW/img.width);
+  const w = Math.max(1, Math.round(img.width*scale)), h = Math.max(1, Math.round(img.height*scale));
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d', { willReadFrequently: true });
+  ctx.drawImage(img, 0, 0, w, h);
+  const id = ctx.getImageData(0, 0, w, h), d = id.data;
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i], g=d[i+1], b=d[i+2];
+    const mx=Math.max(r,g,b), mn=Math.min(r,g,b);
+    const sat=mx-mn;                       /* 色度：彩色笔迹远高于黑白印刷 */
+    const lum=0.299*r+0.587*g+0.114*b;
+    let v;
+    if(sat>45) v=255;                      /* 彩色笔迹 → 白 */
+    else v = lum<140 ? 0 : 255;            /* 黑白二值化：深色印刷保留，铅笔灰/背景 → 白 */
+    d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
+  }
+  ctx.putImageData(id,0,0);
+  return c.toDataURL('image/jpeg', 0.9);
+}
+async function blobToCleanDataUrl(blob){
+  let bmp;
+  try{ bmp = await createImageBitmap(blob, { imageOrientation:'from-image' }); }
+  catch(e){
+    bmp = await new Promise((rs,rj)=>{ const im=new Image(); im.onload=()=>rs(im); im.onerror=rj; im.src=URL.createObjectURL(blob); });
+  }
+  const url = cleanHandwriting(bmp);
+  if(bmp.close) try{ bmp.close(); }catch(e){}
+  return url;
+}
 async function ensureOcrImgs(onProg){
+  const clean = !document.getElementById('ocrb-clean') || document.getElementById('ocrb-clean').checked;
   const names = [...new Set(ocrResults.flatMap(r=>r.w.photos||[]))].filter(n=>!ocrImgCache.has(n));
   let ok = 0, fail = 0;
   for(let i=0;i<names.length;i++){
-    if(onProg) onProg(`加载原图 ${i+1}/${names.length}…`);
+    if(onProg) onProg(`${clean?'净化':'加载'}原图 ${i+1}/${names.length}…`);
     try{
       const resp = await fetch('/api/photo/'+encodeURIComponent(names[i]), { credentials:'same-origin' });
       if(!resp.ok) throw new Error('HTTP '+resp.status);
       const blob = await resp.blob();
-      const url = await new Promise((rs,rj)=>{ const fr=new FileReader(); fr.onload=()=>rs(fr.result); fr.onerror=rj; fr.readAsDataURL(blob); });
+      const url = clean ? await blobToCleanDataUrl(blob) : await new Promise((rs,rj)=>{ const fr=new FileReader(); fr.onload=()=>rs(fr.result); fr.onerror=rj; fr.readAsDataURL(blob); });
       ocrImgCache.set(names[i], url); ok++;
     }catch(e){ fail++; }
   }
   return { ok, fail };
+}
+function onOcrCleanToggle(){
+  ocrImgCache.clear();
+  if(!ocrResults.length) return;
+  const prog = document.getElementById('ocrb-progress');
+  ensureOcrImgs(t=>{ prog.textContent = t; }).then(r=>{
+    prog.textContent = '';
+    renderOcrPreview();
+  });
 }
 let ocrRunning = false, ocrCancel = false, ocrResults = [];
 function openOcrBatch(){
@@ -1122,6 +1168,10 @@ async function startOcrBatch(){
     missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(p))
   }));
   prog.textContent = ocrCancel ? `已停止：完成 ${done}/${jobs.length} 张（失败 ${fail}）` : `识别完成：${jobs.length} 张照片${fail?`，失败 ${fail} 张（可重新开始重试）`:''}`;
+  if(!ocrCancel){
+    const ir = await ensureOcrImgs(t=>{ prog.textContent = t; });
+    prog.textContent = ir.fail ? `识别完成；${ir.fail} 张照片净化失败，将显示原片` : '处理完成 ✓（照片已去除手写痕迹）';
+  }
   renderOcrPreview();
   document.getElementById('ocrb-print').disabled = ocrResults.length===0;
   document.getElementById('ocrb-word').disabled = ocrResults.length===0;
@@ -1131,7 +1181,7 @@ function renderOcrPreview(){
   if(!ocrResults.length){ box.innerHTML = '<div class="empty">尚未识别。选择考试范围后点「开始识别」。</div>'; return; }
   box.innerHTML = ocrResults.map((r,i)=>{
     const w = r.w, ex = state.exams.find(e=>e.id===w.examId);
-    const imgs = (w.photos||[]).map(p=>`<img src="${photoSrc(p)}" style="max-width:100%; max-height:220px; border:1px solid var(--border); border-radius:6px; margin:4px 8px 4px 0; vertical-align:top">`).join('');
+    const imgs = (w.photos||[]).map(p=>`<img src="${ocrImgCache.has(p)?ocrImgCache.get(p):photoSrc(p)}" style="max-width:100%; max-height:220px; border:1px solid var(--border); border-radius:6px; margin:4px 8px 4px 0; vertical-align:top">`).join('');
     const body = r.text || (w.desc ? '（未识别到原题文字，错因描述：' + w.desc + '）' : '');
     return `<div style="margin-bottom:12px; padding:10px; border:1px solid var(--border); border-radius:10px">
       <div class="muted" style="font-size:12px">#${i+1} ${esc(userName(w.owner))} · ${ex?esc(examTitle(ex)):'未关联考试'} · ${SUB[w.subject]?SUB[w.subject].name:''} · ${esc(w.no||'无题号')} · 【${esc(w.kp)}】${w.type?' · '+esc(w.type):''}${r.missing?' <span class="badge orange">部分照片未识别</span>':''}</div>

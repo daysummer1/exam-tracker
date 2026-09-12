@@ -313,7 +313,8 @@ function ocrCfg() {
     provider: process.env.OCR_PROVIDER || o.provider || '',
     zhipuKey: process.env.ZHIPU_API_KEY || o.zhipuKey || '',
     tcSecretId: process.env.TENCENT_SECRET_ID || o.tcSecretId || '',
-    tcSecretKey: process.env.TENCENT_SECRET_KEY || o.tcSecretKey || ''
+    tcSecretKey: process.env.TENCENT_SECRET_KEY || o.tcSecretKey || '',
+    xkbKey: process.env.XKB_API_KEY || db.settings.xkbKey || ''
   };
 }
 function ocrConfigured() {
@@ -322,7 +323,7 @@ function ocrConfigured() {
 }
 function ocrStatus() {
   const c = ocrCfg();
-  return { provider: c.provider, configured: ocrConfigured() };
+  return { provider: c.provider, configured: ocrConfigured(), xkbConfigured: !!c.xkbKey };
 }
 
 function httpPostJson(host, p, headers, bodyObj, timeout = 45000) {
@@ -380,6 +381,53 @@ async function polishText(raw) {
     throw new Error('重排接口异常: HTTP ' + r.code + (msg ? ' ' + msg : ' ' + r.buf.slice(0, 120)));
   }
   return String(txt).trim();
+}
+
+/* ---------- 学库宝题库搜题 ---------- */
+const GRADE_ID = { '一年级':'110','二年级':'120','三年级':'130','四年级':'140','五年级':'150','六年级':'160','七年级':'200','八年级':'300','九年级':'400','初一':'200','初二':'300','初三':'400','高一':'500','高二':'600','高三':'700' };
+const SUBJECT_ID = { chinese:'1', math:'2', english:'3' };
+function stripHtml(s) { return String(s || '').replace(/<[^>]+>/g, ' ').replace(/&nbsp;|&#160;/g, ' ').replace(/\s+/g, ' ').trim(); }
+function xkbScore(kw, cand) {
+  const t = kw.replace(/[\s，。、：；！？（）()【】\[\].,;:!?'"“”‘’\-\\]/g, '');
+  if (t.length < 4) return 0;
+  const set = new Set();
+  for (let i = 0; i + 3 <= t.length; i++) set.add(t.slice(i, i + 3));
+  let hit = 0;
+  for (const g of set) if (cand.includes(g)) hit++;
+  return hit / Math.sqrt(set.size);
+}
+async function xkbSearch(text, grade, subject) {
+  const c = ocrCfg();
+  if (!c.xkbKey) throw new Error('题库搜题未配置 Key');
+  const gradeId = GRADE_ID[grade];
+  if (!gradeId) return { found: false, reason: '年级「' + grade + '」暂不支持搜题' };
+  const bodyObj = { keyword: String(text || '').slice(0, 80), gradeId };
+  const sid = SUBJECT_ID[subject];
+  if (sid) bodyObj.subjectId = sid;
+  const r = await httpPostJson('api.xuekubao.com', '/api/v1/search', { 'X-API-Key': c.xkbKey }, bodyObj, 30000);
+  let outer = null; try { outer = JSON.parse(r.buf); } catch (e) {}
+  if (!outer || outer.errorCode !== '0') throw new Error('搜题接口异常 HTTP ' + r.code + ' ' + (outer && outer.message || r.buf.slice(0, 80)));
+  let list = outer.data;
+  if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = []; } }
+  if (!Array.isArray(list) || !list.length) return { found: false, reason: '题库未找到匹配题目' };
+  let best = null, bestScore = 0;
+  for (const q of list.slice(0, 30)) {
+    const cand = stripHtml([q.title, q.option_a, q.option_b, q.option_c, q.option_d].join(' '));
+    const s = xkbScore(text, cand);
+    if (s > bestScore) { bestScore = s; best = q; }
+  }
+  if (!best || bestScore < 0.6) return { found: false, reason: '匹配度不足（最高 ' + bestScore.toFixed(2) + '）' };
+  const html = String(best.title || '');
+  const imgs = [];
+  const re = /<img[^>]+src=["']([^"']+)["']/gi; let m;
+  while ((m = re.exec(html))) imgs.push(m[1]);
+  return {
+    found: true,
+    html,
+    options: { a: best.option_a || '', b: best.option_b || '', c: best.option_c || '', d: best.option_d || '', e: best.option_e || '' },
+    source: best.source || '', gradeName: best.gradeName || '', subjectName: best.subjectName || '',
+    qtype: best.qtpye || '', md52: best.md52 || '', imgs, score: +bestScore.toFixed(2)
+  };
 }
 
 /* 腾讯云 TC3-HMAC-SHA256 签名（零依赖实现） */
@@ -490,6 +538,37 @@ const server = http.createServer(async (req, res) => {
       }
 
       /* 题目照片 OCR：任何登录用户可用；输入 dataURL 或已存照片文件名 */
+      /* 题库搜题代理（key 只存服务端） */
+      if (url.pathname === '/api/ocr/search' && req.method === 'POST') {
+        const body = await readBody(req);
+        const text = String(body.text || '').trim();
+        if (!text || text === '【无法识别】') return json(res, 400, { error: '没有可搜题的文字' });
+        try {
+          const r = await xkbSearch(text, String(body.grade || ''), String(body.subject || ''));
+          return json(res, 200, r);
+        } catch (e) {
+          return json(res, 502, { error: '搜题失败：' + (e.message || e) });
+        }
+      }
+
+      /* 题库配图代理（转给浏览器，带登录鉴权） */
+      if (url.pathname === '/api/xkbimg' && req.method === 'GET') {
+        const target = url.searchParams.get('url') || '';
+        if (!/^https?:\/\//i.test(target)) return json(res, 400, { error: '无效图片地址' });
+        try {
+          const rr = await fetch(target, { signal: AbortSignal.timeout(20000) });
+          if (!rr.ok) return json(res, 502, { error: '图片拉取失败 HTTP ' + rr.status });
+          const ct = rr.headers.get('content-type') || 'image/jpeg';
+          if (!/^image\//i.test(ct)) return json(res, 400, { error: '非图片内容' });
+          const ab = await rr.arrayBuffer();
+          if (ab.byteLength > 4 * 1024 * 1024) return json(res, 413, { error: '图片过大' });
+          res.writeHead(200, { 'Content-Type': ct, 'Cache-Control': 'private, max-age=86400' });
+          return res.end(Buffer.from(ab));
+        } catch (e) {
+          return json(res, 502, { error: '图片拉取失败：' + (e.message || e) });
+        }
+      }
+
       if (url.pathname === '/api/ocr' && req.method === 'POST') {
         if (!ocrConfigured()) return json(res, 400, { error: 'OCR 未启用：请管理员在「数据管理 → OCR 设置」中配置识别通道' });
         const body = await readBody(req);
@@ -545,6 +624,7 @@ const server = http.createServer(async (req, res) => {
           if (body.zhipuKey !== undefined) o.zhipuKey = String(body.zhipuKey).trim();
           if (body.tcSecretId !== undefined) o.tcSecretId = String(body.tcSecretId).trim();
           if (body.tcSecretKey !== undefined) o.tcSecretKey = String(body.tcSecretKey).trim();
+          if (body.xkbKey !== undefined) db.settings.xkbKey = String(body.xkbKey).trim();
           persist();
           return json(res, 200, visibleState(user));
         }

@@ -424,7 +424,12 @@
           <input type="password" id="ocr-tc-key" placeholder="已保存则留空不修改">
         </div>
       </div>
-      <p class="hint">密钥只保存在服务器，不会下发给浏览器。智谱 Key 在 bigmodel.cn 控制台获取，免费模型 GLM-4V-Flash 不限量；腾讯云需先在控制台开通「文字识别」服务。</p>
+      <div style="margin-top:8px">
+        <label>📚 题库搜题（学库宝）API Key</label>
+        <input type="password" id="ocr-xkb-key" placeholder="粘贴 api.xuekubao.com 的 Key（已保存则留空不修改）">
+        <span class="muted" id="ocr-xkb-status" style="font-size:12px"></span>
+      </div>
+      <p class="hint">密钥只保存在服务器，不会下发给浏览器。智谱 Key 在 bigmodel.cn 控制台获取，免费模型 GLM-4V-Flash 不限量；腾讯云需先在控制台开通「文字识别」服务；学库宝 Key 用于错题原题集的题库搜题（按次计费）。</p>
       <div class="flex" style="justify-content:flex-end; margin-top:10px; align-items:center">
         <span class="muted" id="ocr-status" style="margin-right:auto"></span>
         <button class="btn" onclick="saveOcrConfig()">保存 OCR 设置</button>
@@ -1039,6 +1044,7 @@ function ocrAvailable(){ return !!(state.settings && state.settings.ocr && state
 const ocrCache = new Map();      /* 照片文件名 -> 识别文本（本页内存缓存，避免重复识别） */
 const ocrImgCache = new Map();   /* 照片文件名 -> dataURL（打印/导出 Word 时内嵌原图） */
 const ocrPolishCache = new Map(); /* OCR原文 -> AI重排后的规范题面 */
+const ocrSearchCache = new Map(); /* 题面 -> 学库宝搜题结果 */
 /* 照片净化：擦除手写痕迹，输出黑白印刷体效果（喵喵机风格）
    原理：彩色笔迹（红/蓝笔）色度高中 → 擦白；其余按亮度二值化，铅笔灰被淡化，只留印刷黑 */
 function cleanHandwriting(img){
@@ -1072,18 +1078,67 @@ async function blobToCleanDataUrl(blob){
   if(bmp.close) try{ bmp.close(); }catch(e){}
   return url;
 }
+/* 题库 HTML 题面 -> 可读文本（含简易 LaTeX 转写） */
+function latexLite(s){
+  return String(s||'')
+    .replace(/\\frac\s*\{([^{}]*)\}\s*\{([^{}]*)\}/g, '$1/$2')
+    .replace(/\\sqrt\s*\{([^{}]*)\}/g, '√($1)')
+    .replace(/\^\{([^{}]{1,4})\}/g, '^$1')
+    .replace(/_\{([^{}]{1,4})\}/g, '_$1')
+    .replace(/\\times/g,'×').replace(/\\div/g,'÷').replace(/\\pm/g,'±')
+    .replace(/\\leq|\\le\b/g,'≤').replace(/\\geq|\\ge\b/g,'≥').replace(/\\neq/g,'≠')
+    .replace(/\\angle/g,'∠').replace(/\\triangle/g,'△').replace(/\\circ/g,'°')
+    .replace(/\\parallel/g,'∥').replace(/\\perp/g,'⊥').replace(/\\because/g,'∵').replace(/\\therefore/g,'∴')
+    .replace(/\\quad|\\qquad|\\,/g,' ')
+    .replace(/\\\(|\\\)|\\\[|\\\]/g,'')
+    .replace(/\\text\s*\{([^{}]*)\}/g,'$1')
+    .replace(/\\\\/g,' ');
+}
+function qHtmlToText(html){
+  let s = String(html||'');
+  const imgs = [];
+  s = s.replace(/<img[^>]*>/gi, m=>{ const m2 = m.match(/src=["']([^"']+)["']/i); if(m2) imgs.push(m2[1]); return ''; });
+  s = s.replace(/<br\s*\/?>/gi,'\n').replace(/<\/(p|div|tr|h[1-6])>/gi,'\n').replace(/<\/td>/gi,'　');
+  s = s.replace(/<[^>]+>/g,'');
+  s = s.replace(/&nbsp;|&#160;/g,' ').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+  s = latexLite(s);
+  s = s.split('\n').map(l=>l.replace(/[ \t]+/g,' ').trim()).join('\n').replace(/\n{3,}/g,'\n\n').trim();
+  return { text: s, imgs };
+}
+function xkbResultText(r){
+  if(!r || !r.found) return '';
+  const parts = [qHtmlToText(r.html).text];
+  ['a','b','c','d','e'].forEach(k=>{
+    const v = qHtmlToText(r.options[k]||'').text;
+    if(v) parts.push(k.toUpperCase()+'. '+v);
+  });
+  return parts.filter(Boolean).join('\n');
+}
 async function ensureOcrImgs(onProg){
   const clean = !document.getElementById('ocrb-clean') || document.getElementById('ocrb-clean').checked;
-  const names = [...new Set(ocrResults.flatMap(r=>r.w.photos||[]))].filter(n=>!ocrImgCache.has(n));
+  const jobs = [];
+  [...new Set(ocrResults.flatMap(r=>r.w.photos||[]))].filter(n=>!ocrImgCache.has(n)).forEach(n=>jobs.push({ type:'photo', key:n }));
+  const xurls = [];
+  ocrResults.forEach(r=>{ if(r.xkb && r.xkb.found) (r.xkb.imgs||[]).forEach(u=>{ if(!xurls.includes(u)) xurls.push(u); }); });
+  xurls.filter(u=>!ocrImgCache.has('xkb:'+u)).forEach(u=>jobs.push({ type:'xkb', key:'xkb:'+u, url:u }));
   let ok = 0, fail = 0;
-  for(let i=0;i<names.length;i++){
-    if(onProg) onProg(`${clean?'净化':'加载'}原图 ${i+1}/${names.length}…`);
+  for(let i=0;i<jobs.length;i++){
+    const j = jobs[i];
+    if(onProg) onProg(`${j.type==='xkb'?'加载题库配图':(clean?'净化':'加载')+'原图'} ${i+1}/${jobs.length}…`);
     try{
-      const resp = await fetch('/api/photo/'+encodeURIComponent(names[i]), { credentials:'same-origin' });
-      if(!resp.ok) throw new Error('HTTP '+resp.status);
-      const blob = await resp.blob();
-      const url = clean ? await blobToCleanDataUrl(blob) : await new Promise((rs,rj)=>{ const fr=new FileReader(); fr.onload=()=>rs(fr.result); fr.onerror=rj; fr.readAsDataURL(blob); });
-      ocrImgCache.set(names[i], url); ok++;
+      let blob, url;
+      if(j.type === 'xkb'){
+        const resp = await fetch('/api/xkbimg?url='+encodeURIComponent(j.url), { credentials:'same-origin' });
+        if(!resp.ok) throw new Error('HTTP '+resp.status);
+        blob = await resp.blob();
+        url = await new Promise((rs,rj)=>{ const fr=new FileReader(); fr.onload=()=>rs(fr.result); fr.onerror=rj; fr.readAsDataURL(blob); });
+      } else {
+        const resp = await fetch('/api/photo/'+encodeURIComponent(j.key), { credentials:'same-origin' });
+        if(!resp.ok) throw new Error('HTTP '+resp.status);
+        blob = await resp.blob();
+        url = clean ? await blobToCleanDataUrl(blob) : await new Promise((rs,rj)=>{ const fr=new FileReader(); fr.onload=()=>rs(fr.result); fr.onerror=rj; fr.readAsDataURL(blob); });
+      }
+      ocrImgCache.set(j.key, url); ok++;
     }catch(e){ fail++; }
   }
   return { ok, fail };
@@ -1163,14 +1218,6 @@ async function startOcrBatch(){
     document.getElementById('ocrb-start').disabled = false;
     document.getElementById('ocrb-stop').style.display='none';
   }
-  ocrResults = wrongs.map(w=>{
-    const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
-    return {
-      w,
-      text: ocrPolishCache.get(raw) || raw,
-      missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(p))
-    };
-  });
   prog.textContent = ocrCancel ? `已停止：完成 ${done}/${jobs.length} 张（失败 ${fail}）` : `识别完成：${jobs.length} 张照片${fail?`，失败 ${fail} 张（可重新开始重试）`:''}`;
   /* AI 文字重排：把 OCR 原文整理成规范题面（免费模型，逐题进行） */
   if(!ocrCancel){
@@ -1191,10 +1238,43 @@ async function startOcrBatch(){
       await new Promise(rs=>setTimeout(rs, 200));
     }
   }
-  if(!ocrCancel){
-    const ir = await ensureOcrImgs(t=>{ prog.textContent = t; });
-    prog.textContent = ir.fail ? `完成；${ir.fail} 张照片净化失败，将显示原片` : '处理完成 ✓（AI 重排文字 + 照片去手写）';
+  /* 题库搜题：用重排后的题面去学库宝找标准原题（按次计费，已缓存的不重复搜） */
+  const searchOn = !!(state.settings && state.settings.ocr && state.settings.ocr.xkbConfigured);
+  if(!ocrCancel && searchOn){
+    const toSearch = wrongs.filter(w=>{
+      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+      const t = ocrPolishCache.get(raw) || raw;
+      return t && t!=='【无法识别】' && !ocrSearchCache.has(t);
+    });
+    let sd = 0;
+    for(const w of toSearch){
+      if(ocrCancel) break;
+      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+      const t = ocrPolishCache.get(raw) || raw;
+      prog.textContent = `搜题库 ${sd+1}/${toSearch.length} …`;
+      try{
+        const r = await api('/api/ocr/search', { text: t, grade: examGrade(w), subject: w.subject });
+        ocrSearchCache.set(t, r);
+      }catch(e){ /* 搜题失败不影响流程，保留 AI 文字 */ }
+      sd++;
+      await new Promise(rs=>setTimeout(rs, 300));
+    }
   }
+  if(ocrCancel){ renderOcrPreview(); return; }
+  /* 汇总结果：题库原题优先，AI 重排文字兜底 */
+  ocrResults = wrongs.map(w=>{
+    const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+    const text = ocrPolishCache.get(raw) || raw;
+    return {
+      w,
+      text,
+      xkb: ocrSearchCache.get(text) || null,
+      missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(p))
+    };
+  });
+  /* 加载/净化照片（含题库配图） */
+  const ir = await ensureOcrImgs(t=>{ prog.textContent = t; });
+  prog.textContent = '处理完成 ✓' + (ir.fail ? `（${ir.fail} 张图加载失败）` : '');
   renderOcrPreview();
   document.getElementById('ocrb-print').disabled = ocrResults.length===0;
   document.getElementById('ocrb-word').disabled = ocrResults.length===0;
@@ -1204,10 +1284,22 @@ function renderOcrPreview(){
   if(!ocrResults.length){ box.innerHTML = '<div class="empty">尚未识别。选择考试范围后点「开始识别」。</div>'; return; }
   box.innerHTML = ocrResults.map((r,i)=>{
     const w = r.w, ex = state.exams.find(e=>e.id===w.examId);
+    const head = `#${i+1} ${esc(userName(w.owner))} · ${ex?esc(examTitle(ex)):'未关联考试'} · ${SUB[w.subject]?SUB[w.subject].name:''} · ${esc(w.no||'无题号')} · 【${esc(w.kp)}】${w.type?' · '+esc(w.type):''}`;
+    if(r.xkb && r.xkb.found){
+      const xt = xkbResultText(r.xkb) || r.text;
+      const ximgs = (r.xkb.imgs||[]).map(u=>`<img src="${ocrImgCache.has('xkb:'+u)?ocrImgCache.get('xkb:'+u):('/api/xkbimg?url='+encodeURIComponent(u))}" style="max-width:100%; max-height:260px; border:1px solid var(--border); border-radius:6px; margin:4px 8px 4px 0; vertical-align:top">`).join('');
+      const fallback = r.text ? `<div style="white-space:pre-wrap; font-size:12px; margin-top:6px; color:var(--muted); border-top:1px dashed var(--border); padding-top:6px">识别原文（供比对）：${esc(r.text)}</div>` : '';
+      return `<div style="margin-bottom:12px; padding:10px; border:1px solid var(--border); border-radius:10px">
+        <div class="muted" style="font-size:12px">${head} <span class="badge" style="background:#e7f5ee; color:#177a4c">📚 题库匹配${r.xkb.source?' · '+esc(r.xkb.source.slice(0,30)):''}</span></div>
+        ${ximgs?`<div style="margin-top:6px">${ximgs}</div>`:''}
+        <div style="white-space:pre-wrap; font-size:13px; margin-top:6px; border-top:1px dashed var(--border); padding-top:6px">${esc(xt)}</div>
+        ${fallback}
+      </div>`;
+    }
     const imgs = (w.photos||[]).map(p=>`<img src="${ocrImgCache.has(p)?ocrImgCache.get(p):photoSrc(p)}" style="max-width:100%; max-height:220px; border:1px solid var(--border); border-radius:6px; margin:4px 8px 4px 0; vertical-align:top">`).join('');
     const body = r.text || (w.desc ? '（未识别到原题文字，错因描述：' + w.desc + '）' : '');
     return `<div style="margin-bottom:12px; padding:10px; border:1px solid var(--border); border-radius:10px">
-      <div class="muted" style="font-size:12px">#${i+1} ${esc(userName(w.owner))} · ${ex?esc(examTitle(ex)):'未关联考试'} · ${SUB[w.subject]?SUB[w.subject].name:''} · ${esc(w.no||'无题号')} · 【${esc(w.kp)}】${w.type?' · '+esc(w.type):''}${r.missing?' <span class="badge orange">部分照片未识别</span>':''}</div>
+      <div class="muted" style="font-size:12px">${head}${r.missing?' <span class="badge orange">部分照片未识别</span>':''}</div>
       ${imgs?`<div style="margin-top:6px">${imgs}</div>`:''}
       ${body?`<div style="white-space:pre-wrap; font-size:13px; margin-top:6px; border-top:1px dashed var(--border); padding-top:6px">${esc(body)}</div>`:''}
     </div>`;
@@ -1223,9 +1315,17 @@ function ocrBuildHtml(){
     arr.forEach(r=>{
       idx++;
       const w = r.w;
+      const tag = r.xkb && r.xkb.found ? `　📚 题库匹配${r.xkb.source?'（'+r.xkb.source.slice(0,34)+'）':''}` : '';
+      const head = `${idx}. ${esc(userName(w.owner))}　${SUB[w.subject]?SUB[w.subject].name:''}　${esc(w.no||'')}　【${esc(w.kp)}】${w.type?'　'+esc(w.type):''}${tag}`;
+      if(r.xkb && r.xkb.found){
+        const xt = xkbResultText(r.xkb) || r.text;
+        const ximgs = (r.xkb.imgs||[]).map(u=>ocrImgCache.has('xkb:'+u)?`<img class="pimg" src="${ocrImgCache.get('xkb:'+u)}">`:'').join('');
+        body += `<div class="q"><div class="qh">${head}</div>${ximgs?`<div class="pimgs">${ximgs}</div>`:''}${xt?`<div class="qt">${esc(xt)}</div>`:''}</div>`;
+        return;
+      }
       const imgs = (w.photos||[]).map(p=>ocrImgCache.has(p)?`<img class="pimg" src="${ocrImgCache.get(p)}">`:'').join('');
       const qt = r.text || (w.desc ? '（未识别到原题文字，错因描述：' + w.desc + '）' : '');
-      body += `<div class="q"><div class="qh">${idx}. ${esc(userName(w.owner))}　${SUB[w.subject]?SUB[w.subject].name:''}　${esc(w.no||'')}　【${esc(w.kp)}】${w.type?'　'+esc(w.type):''}</div>`
+      body += `<div class="q"><div class="qh">${head}</div>`
         + (imgs?`<div class="pimgs">${imgs}</div>`:'')
         + (qt?`<div class="qt">${esc(qt)}</div>`:'') + `</div>`;
     });
@@ -1297,6 +1397,8 @@ function renderOcrCard(){
   document.getElementById('ocr-provider').value = st.provider || '';
   onOcrProviderChange();
   document.getElementById('ocr-status').textContent = st.configured ? '当前状态：已启用 ✓' : '当前状态：未启用';
+  const xst = document.getElementById('ocr-xkb-status');
+  if (xst) xst.textContent = st.xkbConfigured ? '已配置 ✓' : '未配置';
 }
 function onOcrProviderChange(){
   const v = document.getElementById('ocr-provider').value;
@@ -1309,6 +1411,8 @@ async function saveOcrConfig(){
   const ti = document.getElementById('ocr-tc-id').value.trim();
   const tk = document.getElementById('ocr-tc-key').value.trim();
   if(zk) body.zhipuKey = zk;
+  const xk = document.getElementById('ocr-xkb-key') ? document.getElementById('ocr-xkb-key').value.trim() : '';
+  if(xk) body.xkbKey = xk;
   if(ti) body.tcSecretId = ti;
   if(tk) body.tcSecretKey = tk;
   try{

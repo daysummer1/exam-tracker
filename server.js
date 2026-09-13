@@ -687,7 +687,7 @@ const server = http.createServer(async (req, res) => {
           const role = body.role === 'admin' ? 'admin' : 'member';
           if (u.username === user.username && role !== 'admin') return json(res, 400, { error: '不能降级自己的管理员身份' });
           u.role = role;
-          if (role === 'admin') { u.grade = ''; u.gradeYear = 0; }
+          /* 学生被提升为管理员时保留原年级（管理员也可能是学生）；年级可在「我的资料/用户管理」中随时修改 */
           persist();
           return json(res, 200, visibleState(user));
         }

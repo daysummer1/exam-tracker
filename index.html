@@ -1054,10 +1054,15 @@ function viewPhoto(src){
 
 /* ================= 错题原题集（批量 OCR + 打印/导出） ================= */
 function ocrAvailable(){ return !!(state.settings && state.settings.ocr && state.settings.ocr.configured); }
-const ocrCache = new Map();      /* 照片文件名 -> 识别文本（本页内存缓存，避免重复识别） */
+const ocrCache = new Map();      /* 题号|知识点|照片名 -> 定点识别文本（本页内存缓存，避免重复识别） */
 const ocrImgCache = new Map();   /* 照片文件名 -> dataURL（打印/导出 Word 时内嵌原图） */
 const ocrPolishCache = new Map(); /* OCR原文 -> AI重排后的规范题面 */
 const ocrSearchCache = new Map(); /* 题面 -> 学库宝搜题结果 */
+const ocrKwCache = new Map();    /* 题面 -> 搜题关键词（AI 提炼的区分度片段） */
+/* OCR 缓存键：同一张照片在不同题号/知识点下定点转写的结果不同 */
+function ocrKey(w, p){ return (w.no||'') + '|' + (w.kp||'') + '|' + p; }
+/* 一道错题的全部识别文本（按缓存键聚合） */
+function ocrRawText(w){ return (w.photos||[]).map(p=>ocrCache.get(ocrKey(w,p))).filter(Boolean).join('\n').trim(); }
 /* 照片净化：擦除手写痕迹，输出黑白印刷体效果（喵喵机风格）
    原理：彩色笔迹（红/蓝笔）色度高中 → 擦白；其余按亮度二值化，铅笔灰被淡化，只留印刷黑 */
 function cleanHandwriting(img){
@@ -1195,7 +1200,7 @@ function ocrbRefreshStat(){
   const list = ocrbScopeWrongs();
   const withPhotos = list.filter(w=>w.photos&&w.photos.length);
   let total=0, cached=0;
-  withPhotos.forEach(w=>(w.photos||[]).forEach(p=>{ total++; if(ocrCache.has(p)) cached++; }));
+  withPhotos.forEach(w=>(w.photos||[]).forEach(p=>{ total++; if(ocrCache.has(ocrKey(w,p))) cached++; }));
   const noPhoto = list.length - withPhotos.length;
   document.getElementById('ocrb-stat').innerHTML =
     `共 <b>${list.length}</b> 题错题（${withPhotos.length} 题带照片），待识别照片 <b>${total}</b> 张，本页已缓存 <b>${cached}</b> 张` +
@@ -1209,17 +1214,19 @@ async function startOcrBatch(){
   document.getElementById('ocrb-start').disabled = true;
   document.getElementById('ocrb-stop').style.display='';
   const jobs = [];
-  wrongs.forEach(w=>(w.photos||[]).forEach(p=>jobs.push(p)));
+  wrongs.forEach(w=>(w.photos||[]).forEach(p=>jobs.push({ p, w })));
   const prog = document.getElementById('ocrb-progress');
   let done = 0, fail = 0;
   try{
-    for(const name of jobs){
+    for(const j of jobs){
       if(ocrCancel) break;
       prog.textContent = `识别中 ${done+1}/${jobs.length} …`;
       try{
-        if(!ocrCache.has(name)){
-          const r = await api('/api/ocr', { name });
-          ocrCache.set(name, (r.text||'').trim());
+        const key = ocrKey(j.w, j.p);
+        if(!ocrCache.has(key)){
+          /* 定点转写：带上题号和知识点，AI 只转这一道题（对齐喵喵机"框选切题"） */
+          const r = await api('/api/ocr', { name: j.p, no: j.w.no||'', kp: j.w.kp||'' });
+          ocrCache.set(key, (r.text||'').trim());
           await new Promise(rs=>setTimeout(rs, 250));   /* 免费通道有并发限制，逐张+间隔 */
         }
       }catch(e){
@@ -1238,13 +1245,13 @@ async function startOcrBatch(){
   /* AI 文字重排：把 OCR 原文整理成规范题面（免费模型，逐题进行） */
   if(!ocrCancel){
     const toPolish = wrongs.filter(w=>{
-      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+      const raw = ocrRawText(w);
       return raw && raw!=='【无法识别】' && !ocrPolishCache.has(raw);
     });
     let pd = 0;
     for(const w of toPolish){
       if(ocrCancel) break;
-      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+      const raw = ocrRawText(w);
       prog.textContent = `AI 重排题目 ${pd+1}/${toPolish.length} …`;
       try{
         const r = await api('/api/ocr', { polish:true, text: raw });
@@ -1254,23 +1261,40 @@ async function startOcrBatch(){
       await new Promise(rs=>setTimeout(rs, 200));
     }
   }
-  /* 题库搜题：用重排后的题面去学库宝找标准原题（按次计费，已缓存的不重复搜） */
+  /* 题库搜题：先用 AI 提炼的区分度关键词搜（免费），未命中再用完整题面兜底一次（按次计费） */
   const searchOn = !!(state.settings && state.settings.ocr && state.settings.ocr.xkbConfigured);
   if(!ocrCancel && searchOn){
     const toSearch = wrongs.filter(w=>{
-      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
-      const t = ocrPolishCache.get(raw) || raw;
+      const t = ocrPolishCache.get(ocrRawText(w)) || ocrRawText(w);
       return t && t!=='【无法识别】' && !ocrSearchCache.has(t);
     });
     let sd = 0;
     for(const w of toSearch){
       if(ocrCancel) break;
-      const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+      const raw = ocrRawText(w);
       const t = ocrPolishCache.get(raw) || raw;
+      const gradeV = (document.getElementById('ocrb-grade')||{}).value || examGrade(w);
       prog.textContent = `搜题库 ${sd+1}/${toSearch.length} …`;
       try{
-        const r = await api('/api/ocr/search', { text: t, grade: (document.getElementById('ocrb-grade')||{}).value || examGrade(w), subject: w.subject });
-        ocrSearchCache.set(t, r);
+        /* 第一步：提炼区分度关键词（免费模型，结果缓存） */
+        if(!ocrKwCache.has(t)){
+          try{
+            const k = await api('/api/ocr', { keyextract:true, text: t });
+            if(k.text) ocrKwCache.set(t, k.text.trim());
+          }catch(e){ /* 提炼失败只用完整题面搜 */ }
+        }
+        const kw = ocrKwCache.get(t);
+        /* 第二步：关键词 + 完整题面双路都搜，按匹配度择优（同分偏完整题面，来源信息更全） */
+        const base = { grade: gradeV, subject: w.subject };
+        const attempts = [];
+        attempts.push(await api('/api/ocr/search', Object.assign({ text: t }, base)).catch(()=>null));
+        if(kw && kw !== t){
+          prog.textContent = `搜题库 ${sd+1}/${toSearch.length}（关键词通道）…`;
+          attempts.push(await api('/api/ocr/search', Object.assign({ text: kw }, base)).catch(()=>null));
+        }
+        const okR = attempts.filter(Boolean);
+        const founds = okR.filter(r=>r && r.found).sort((a,b)=>(b.score||0)-(a.score||0));
+        ocrSearchCache.set(t, founds[0] || okR[0] || { found:false, reason:'搜题无结果' });
       }catch(e){ /* 搜题失败不影响流程，保留 AI 文字 */ }
       sd++;
       await new Promise(rs=>setTimeout(rs, 300));
@@ -1279,13 +1303,13 @@ async function startOcrBatch(){
   if(ocrCancel){ renderOcrPreview(); return; }
   /* 汇总结果：题库原题优先，AI 重排文字兜底 */
   ocrResults = wrongs.map(w=>{
-    const raw = (w.photos||[]).map(p=>ocrCache.get(p)).filter(Boolean).join('\n').trim();
+    const raw = ocrRawText(w);
     const text = ocrPolishCache.get(raw) || raw;
     return {
       w,
       text,
       xkb: ocrSearchCache.get(text) || null,
-      missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(p))
+      missing: (w.photos||[]).length>0 && (w.photos||[]).some(p=>!ocrCache.has(ocrKey(w,p)))
     };
   });
   /* 加载/净化照片（含题库配图） */
@@ -1306,7 +1330,7 @@ function renderOcrPreview(){
       const ximgs = (r.xkb.imgs||[]).map(u=>`<img src="${ocrImgCache.has('xkb:'+u)?ocrImgCache.get('xkb:'+u):('/api/xkbimg?url='+encodeURIComponent(u))}" style="max-width:100%; max-height:260px; border:1px solid var(--border); border-radius:6px; margin:4px 8px 4px 0; vertical-align:top">`).join('');
       const fallback = r.text ? `<div style="white-space:pre-wrap; font-size:12px; margin-top:6px; color:var(--muted); border-top:1px dashed var(--border); padding-top:6px">识别原文（供比对）：${esc(r.text)}</div>` : '';
       return `<div style="margin-bottom:12px; padding:10px; border:1px solid var(--border); border-radius:10px">
-        <div class="muted" style="font-size:12px">${head} <span class="badge" style="background:#e7f5ee; color:#177a4c">📚 题库匹配${r.xkb.source?' · '+esc(r.xkb.source.slice(0,30)):''}</span></div>
+        <div class="muted" style="font-size:12px">${head} <span class="badge" style="background:#e7f5ee; color:#177a4c">📚 题库匹配 ${r.xkb.score!=null?'· 匹配度'+r.xkb.score:''}${r.xkb.source?' · '+esc(r.xkb.source.slice(0,30)):''}</span></div>
         ${ximgs?`<div style="margin-top:6px">${ximgs}</div>`:''}
         <div style="white-space:pre-wrap; font-size:13px; margin-top:6px; border-top:1px dashed var(--border); padding-top:6px">${esc(xt)}</div>
         ${fallback}
@@ -1331,7 +1355,7 @@ function ocrBuildHtml(){
     arr.forEach(r=>{
       idx++;
       const w = r.w;
-      const tag = r.xkb && r.xkb.found ? `　📚 题库匹配${r.xkb.source?'（'+r.xkb.source.slice(0,34)+'）':''}` : '';
+      const tag = r.xkb && r.xkb.found ? `　📚 题库匹配${r.xkb.score!=null?'（匹配度'+r.xkb.score+'）':''}${r.xkb.source?'（'+r.xkb.source.slice(0,34)+'）':''}` : '';
       const head = `${idx}. ${esc(userName(w.owner))}　${SUB[w.subject]?SUB[w.subject].name:''}　${esc(w.no||'')}　【${esc(w.kp)}】${w.type?'　'+esc(w.type):''}${tag}`;
       if(r.xkb && r.xkb.found){
         const xt = xkbResultText(r.xkb) || r.text;

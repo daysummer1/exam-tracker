@@ -338,7 +338,7 @@ function httpPostJson(host, p, headers, bodyObj, timeout = 45000) {
   });
 }
 
-async function ocrZhipu(mime, b64) {
+async function ocrZhipu(mime, b64, prompt) {
   const c = ocrCfg();
   const r = await httpPostJson('open.bigmodel.cn', '/api/paas/v4/chat/completions',
     { Authorization: 'Bearer ' + c.zhipuKey },
@@ -346,7 +346,7 @@ async function ocrZhipu(mime, b64) {
       model: 'glm-4v-flash',
       messages: [{ role: 'user', content: [
         { type: 'image_url', image_url: { url: 'data:' + mime + ';base64,' + b64 } },
-        { type: 'text', text: OCR_PROMPT }
+        { type: 'text', text: prompt || OCR_PROMPT }
       ] }],
       temperature: 0.1, max_tokens: 1024
     });
@@ -360,6 +360,33 @@ async function ocrZhipu(mime, b64) {
 }
 
 const POLISH_PROMPT = '下面是从错题照片 OCR 转写的题目文字。请把它整理成规范的标准题面：\n1. 修正错别字和 OCR 识别错误（如数字被写成汉字、断句错误、漏字），依据上下文补全明显缺失的字词，但不得改变题意、不得添加题目中不存在的条件或数据；\n2. 数学式子用规范写法：平方写 ^2，分数写 a/b，根号写 √，角度用 ∠；\n3. 保留题号、小问编号和选项标号（A. B. C. D.）；\n4. 题目中的空括号（ ）、横线____等填空处必须保持空白原样，绝对不要推理或填写答案进去；\n5. 【图：××图】标注原样保留，位置不变；\n6. 适当分段排版；\n7. 只输出整理后的题面本身，不要任何解释、点评或前后缀。';
+
+/* 定点转写：照片里往往有多道题，只转写错题记录对应的那一道（对齐喵喵机"框选切题"的效果） */
+function ocrPromptOne(no, kp) {
+  return '这是学生错题的照片，照片中可能同时包含多道题目。请只完整转写目标题目：\n目标题号：' + (String(no || '').trim() || '未提供') + '\n目标知识点：' + (String(kp || '').trim() || '未提供') + '\n要求：\n1. 优先转写题号与目标一致的那道题；若照片中没有该题号，则转写与目标知识点最相符的一道题；只转写这一道题，不要把整页所有题都写出来；\n2. 忽略所有手写字迹（作答、订正、批注、划线），只转写印刷的题目；\n3. 按原题顺序转写，保留小问编号和选项标号（A. B. C. D.）；\n4. 数学式子用易读写法：平方写 ^2，分数写 a/b，根号写 √，角度用 ∠；\n5. 若题中含几何图形、函数图象、统计图表等插图，在对应位置用一行【图：××图】简要标注；\n6. 只输出题目内容本身，不要任何解释、点评或前后缀；\n7. 若照片模糊或没有可识别的题目，只输出：【无法识别】。';
+}
+
+/* 搜题关键词提炼：从题面中挑最有区分度的连续片段（全文检索对"题号+背景铺垫句"不友好） */
+const KEY_PROMPT = '下面是一道题目文字。请从中提炼一段用于在题库全文检索这道题的关键词：\n1. 必须是题目原文中连续的一段（不要改写、不要拼接），15~40个字；\n2. 选最有区分度的部分：含具体数字、条件对象、核心问法的片段；\n3. 去掉题号和背景铺垫句（如"随着科技的不断发展"这类套话）；\n4. 只输出这一段关键词本身，不要任何解释、引号或前后缀。';
+
+async function keyExtract(raw) {
+  const c = ocrCfg();
+  if (c.provider !== 'zhipu' || !c.zhipuKey) throw new Error('关键词提炼需要智谱通道');
+  const r = await httpPostJson('open.bigmodel.cn', '/api/paas/v4/chat/completions',
+    { Authorization: 'Bearer ' + c.zhipuKey },
+    {
+      model: 'glm-4-flash',
+      messages: [
+        { role: 'system', content: KEY_PROMPT },
+        { role: 'user', content: raw.slice(0, 1200) }
+      ],
+      temperature: 0.1, max_tokens: 128
+    });
+  let j = null; try { j = JSON.parse(r.buf); } catch (e) {}
+  const txt = j && j.choices && j.choices[0] && j.choices[0].message && j.choices[0].message.content;
+  if (!txt) throw new Error('提炼接口异常: HTTP ' + r.code + ' ' + r.buf.slice(0, 120));
+  return String(txt).trim().replace(/^["'“”‘’]+|["'“”‘’]+$/g, '');
+}
 
 async function polishText(raw) {
   const c = ocrCfg();
@@ -412,7 +439,7 @@ async function xkbSearch(text, grade, subject) {
   if (typeof list === 'string') { try { list = JSON.parse(list); } catch (e) { list = []; } }
   if (!Array.isArray(list) || !list.length) return { found: false, reason: '题库未找到匹配题目' };
   let best = null, bestScore = 0;
-  for (const q of list.slice(0, 30)) {
+  for (const q of list.slice(0, 50)) {
     const cand = stripHtml([q.title, q.option_a, q.option_b, q.option_c, q.option_d].join(' '));
     const s = xkbScore(text, cand);
     if (s > bestScore) { bestScore = s; best = q; }
@@ -584,6 +611,17 @@ const server = http.createServer(async (req, res) => {
             return json(res, 502, { error: 'AI 重排失败：' + (e.message || e) });
           }
         }
+        /* 搜题关键词提炼：从题面挑最有区分度的连续片段 */
+        if (body.keyextract) {
+          const raw = String(body.text || '').trim();
+          if (!raw || raw === '【无法识别】') return json(res, 400, { error: '没有可提炼的文字' });
+          try {
+            const text = await keyExtract(raw);
+            return json(res, 200, { ok: true, text });
+          } catch (e) {
+            return json(res, 502, { error: '关键词提炼失败：' + (e.message || e) });
+          }
+        }
         let mime = 'image/jpeg', b64 = '';
         if (typeof body.data === 'string' && body.data.startsWith('data:image/')) {
           const m = body.data.match(/^data:(image\/[a-z+]+);base64,([A-Za-z0-9+/=]+)$/);
@@ -597,7 +635,8 @@ const server = http.createServer(async (req, res) => {
         } else return json(res, 400, { error: '缺少图片数据' });
         try {
           const c = ocrCfg();
-          const text = (c.provider === 'tencent') ? await ocrTencent(b64) : await ocrZhipu(mime, b64);
+          const one = (body.no || body.kp) ? ocrPromptOne(body.no, body.kp) : null;   /* 定点转写：只转目标题 */
+          const text = (c.provider === 'tencent') ? await ocrTencent(b64) : await ocrZhipu(mime, b64, one);
           return json(res, 200, { ok: true, text: text || '【无法识别】' });
         } catch (e) {
           return json(res, 502, { error: 'OCR 调用失败：' + (e.message || e) });

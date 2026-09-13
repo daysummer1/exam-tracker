@@ -664,6 +664,13 @@ function applyServerState(d){
   state.full = d.full||state.full; state.users = d.users||state.users;
   if(d.settings) state.settings = d.settings;
   if(d.registrations) state.registrations = d.registrations;
+  /* 身份同步：角色/年级等以服务端为准（管理员降级、年级修改后刷新页面即生效，无需重新登录） */
+  if(d.user && me && d.user.username === me.username){
+    const changed = JSON.stringify(d.user) !== JSON.stringify(me);
+    me = d.user;
+    localStorage.setItem('auth_me', JSON.stringify(me));
+    if(changed) updateUserChip();
+  }
   saveCache();
   rerenderAll();
 }

@@ -65,9 +65,7 @@ function up(local, remote) { return new Promise((res, rej) => sftp.fastPut(local
   /* 提升 lhy 为管理员 */
   const lhy = st.j.users.find(u => u.username === 'lhy');
   if (!lhy) throw new Error('用户 lhy 不存在');
-  const sr = await call('/api/users', 'POST', { action: 'setrole', username: 'lhy', role: 'admin' }, tok);
-  const lhyAfter = sr.j && sr.j.users && sr.j.users.find(u => u.username === 'lhy');
-  log('7) lhy 提升为管理员:', lhyAfter && lhyAfter.role === 'admin' ? '✅ role=admin' : '❌ ' + sr.buf.slice(0, 120));
+  /* 注意：不再自动调整角色！lhy 已按用户要求降回普通成员（2026-09-13），角色以线上数据为准 */
 
   /* lhy 登录复核 */
   const lhyLogin = await call('/api/login', 'POST', { username: 'lhy', password: 'lhy123' });
@@ -75,8 +73,11 @@ function up(local, remote) { return new Promise((res, rej) => sftp.fastPut(local
 
   /* 配置线上 OCR（智谱 GLM-4V-Flash，密钥只存服务器 data.json） */
   const ocrKey = fs.readFileSync('C:/Users/tony/WorkBuddy/2026-09-09-20-20-52/.zhipukey', 'utf8').trim();
-  const oc = await call('/api/op', 'POST', { op: 'ocrconfig', provider: 'zhipu', zhipuKey: ocrKey }, tok);
+  const cfgBody = { op: 'ocrconfig', provider: 'zhipu', zhipuKey: ocrKey };
+  try { cfgBody.xkbKey = fs.readFileSync('C:/Users/tony/WorkBuddy/2026-09-09-20-20-52/.xkbkey', 'utf8').trim(); } catch (e) {}
+  const oc = await call('/api/op', 'POST', cfgBody, tok);
   log('9) OCR 配置:', oc.j && oc.j.settings && oc.j.settings.ocr && oc.j.settings.ocr.configured ? '✅ 已启用智谱通道' : '❌ ' + oc.buf.slice(0, 120));
+  log('9b) 题库搜题:', oc.j && oc.j.settings && oc.j.settings.ocr && oc.j.settings.ocr.xkbConfigured ? '✅ 学库宝已配置' : '⚠️ 未配置');
 
   /* 线上 OCR 实测（用线上真实照片） */
   const wP = st.j.wrongs.find(w => w.photos && w.photos.length);

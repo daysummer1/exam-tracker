@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>每周考试成绩追踪 · 使用说明书</title>
+<style>
+  :root{
+    --primary:#2563eb; --primary-dark:#1d4ed8; --line:#e5e7eb;
+    --text:#1f2937; --muted:#6b7280; --bg:#f8fafc; --warn:#b45309; --ok:#047857;
+  }
+  *{box-sizing:border-box}
+  body{
+    font-family:"Microsoft YaHei","PingFang SC","Segoe UI",sans-serif;
+    color:var(--text); background:var(--bg); margin:0; line-height:1.75; font-size:15px;
+  }
+  .layout{display:flex; max-width:1180px; margin:0 auto; gap:24px; padding:0 16px;}
+  /* ---------- 侧边目录 ---------- */
+  nav.toc{
+    width:240px; flex-shrink:0; position:sticky; top:0; align-self:flex-start;
+    max-height:100vh; overflow-y:auto; padding:24px 0 40px;
+  }
+  nav.toc .toc-title{font-weight:700; font-size:14px; color:var(--muted); margin-bottom:10px; letter-spacing:2px}
+  nav.toc a{
+    display:block; color:var(--text); text-decoration:none; padding:5px 10px; border-radius:6px;
+    font-size:14px; border-left:3px solid transparent;
+  }
+  nav.toc a:hover{background:#eef2ff}
+  nav.toc a.sub{padding-left:26px; color:var(--muted); font-size:13px}
+  main{flex:1; min-width:0; padding:24px 0 80px;}
+  /* ---------- 封面 ---------- */
+  .cover{
+    background:linear-gradient(135deg,#2563eb,#1e40af); color:#fff; border-radius:16px;
+    padding:44px 40px; margin-bottom:28px;
+  }
+  .cover h1{margin:0 0 10px; font-size:30px; letter-spacing:1px}
+  .cover .sub{font-size:15px; opacity:.92; margin-bottom:22px}
+  .cover .meta{display:flex; flex-wrap:wrap; gap:10px; font-size:13px}
+  .cover .meta span{background:rgba(255,255,255,.16); padding:4px 14px; border-radius:99px}
+  /* ---------- 章节 ---------- */
+  section{background:#fff; border:1px solid var(--line); border-radius:14px; padding:26px 30px; margin-bottom:22px;}
+  section > h2{
+    font-size:20px; margin:0 0 14px; padding-bottom:10px; border-bottom:2px solid #eef2ff; color:var(--primary-dark);
+  }
+  section h3{font-size:16px; margin:22px 0 8px; color:var(--text)}
+  section h3::before{content:"▍"; color:var(--primary); margin-right:4px}
+  p{margin:8px 0}
+  .muted{color:var(--muted); font-size:13px}
+  .tip{background:#eff6ff; border-left:4px solid var(--primary); padding:10px 14px; border-radius:0 8px 8px 0; margin:12px 0; font-size:14px}
+  .warn{background:#fffbeb; border-left:4px solid #d97706; padding:10px 14px; border-radius:0 8px 8px 0; margin:12px 0; font-size:14px}
+  .ok{background:#ecfdf5; border-left:4px solid var(--ok); padding:10px 14px; border-radius:0 8px 8px 0; margin:12px 0; font-size:14px}
+  table{width:100%; border-collapse:collapse; margin:12px 0; font-size:14px}
+  th,td{border:1px solid var(--line); padding:8px 12px; text-align:left; vertical-align:top}
+  th{background:#f1f5f9; white-space:nowrap}
+  tr:nth-child(even) td{background:#fafbfd}
+  code{background:#f1f5f9; padding:1px 6px; border-radius:4px; font-size:13px; font-family:Consolas,monospace; color:#b91c1c}
+  .steps{counter-reset:step; padding-left:0; list-style:none}
+  .steps li{position:relative; padding-left:38px; margin:10px 0}
+  .steps li::before{
+    counter-increment:step; content:counter(step);
+    position:absolute; left:0; top:2px; width:26px; height:26px; border-radius:50%;
+    background:var(--primary); color:#fff; font-weight:700; font-size:14px;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .kbd{display:inline-block; background:#fff; border:1px solid #cbd5e1; border-bottom-width:2px; border-radius:5px; padding:0 7px; font-size:12.5px}
+  details{margin:10px 0; border:1px solid var(--line); border-radius:10px; padding:0 16px; background:#fff}
+  details summary{cursor:pointer; font-weight:600; padding:12px 0}
+  details[open] summary{border-bottom:1px dashed var(--line); margin-bottom:10px}
+  .role-tag{display:inline-block; font-size:12px; padding:1px 8px; border-radius:99px; font-weight:600}
+  .role-admin{background:#fee2e2; color:#b91c1c}
+  .role-member{background:#dbeafe; color:#1d4ed8}
+  .role-all{background:#dcfce7; color:#15803d}
+  /* ---------- 打印 ---------- */
+  @media print{
+    body{background:#fff; font-size:12.5px}
+    nav.toc{display:none}
+    .layout{display:block; max-width:100%}
+    main{padding:0}
+    section{border:none; border-radius:0; padding:10px 0; page-break-inside:auto}
+    section.chapter{page-break-before:always}
+    .cover{border-radius:0; margin-bottom:20px; padding:34px 0 26px; -webkit-print-color-adjust:exact; print-color-adjust:exact}
+    details{page-break-inside:avoid}
+    a{color:inherit; text-decoration:none}
+    .toc-print{display:block !important}
+  }
+  /* 打印版目录（屏幕上隐藏） */
+  .toc-print{display:none; background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 22px; margin-bottom:18px}
+  .toc-print h2{font-size:16px; margin:0 0 8px; color:var(--primary-dark)}
+  .toc-print ol{margin:0; padding-left:22px; columns:2; font-size:13.5px}
+  @page{size:A4; margin:16mm 15mm}
+</style>
+</head>
+<body>
+<div class="layout">
+
+<nav class="toc">
+  <div class="toc-title">目 录</div>
+  <a href="#intro">1. 系统简介</a>
+  <a href="#quick">2. 快速上手</a>
+  <a href="#account">3. 账号与个人设置</a>
+  <a href="#account" class="sub">登录 / 注册</a>
+  <a href="#profile" class="sub">我的资料</a>
+  <a href="#rename" class="sub">修改姓名（实名规则）</a>
+  <a href="#password" class="sub">修改密码</a>
+  <a href="#exam">4. 成绩管理</a>
+  <a href="#exam" class="sub">新增考试记录 / 周次标签</a>
+  <a href="#records" class="sub">考试记录时间线</a>
+  <a href="#wrong">5. 错题本与 OCR</a>
+  <a href="#wrong-add" class="sub">新增错题</a>
+  <a href="#ocr" class="sub">OCR 识别 · AI 润色 · 搜题</a>
+  <a href="#print" class="sub">原题集 / 打印 / 导出 Word</a>
+  <a href="#stats">6. 学情统计</a>
+  <a href="#track">7. 追踪事项</a>
+  <a href="#data">8. 数据管理（管理员）</a>
+  <a href="#faq">9. 常见问题 FAQ</a>
+  <a href="#appendix">10. 功能速查表</a>
+</nav>
+
+<main>
+
+<!-- ================= 封面 ================= -->
+<div class="cover">
+  <h1>📚 每周考试成绩追踪</h1>
+  <div class="sub">使 用 说 明 书 —— 面向学生、家长与管理员的完整操作指南</div>
+  <div class="meta">
+    <span>🌐 访问地址：http://43.163.230.72</span>
+    <span>📖 在线帮助：http://43.163.230.72/help.html</span>
+    <span>📅 更新日期：2026 年 9 月 16 日</span>
+    <span>🔒 v1.6 · 含 OCR 智能错题识别</span>
+  </div>
+</div>
+
+<div class="toc-print">
+  <h2>目 录</h2>
+  <ol>
+    <li>系统简介</li><li>快速上手</li><li>账号与个人设置</li><li>成绩管理</li>
+    <li>错题本与 OCR</li><li>学情统计</li><li>追踪事项</li><li>数据管理（管理员）</li>
+    <li>常见问题 FAQ</li><li>功能速查表</li>
+  </ol>
+</div>
+
+<!-- ================= 1 简介 ================= -->
+<section class="chapter" id="intro">
+  <h2>一、系统简介</h2>
+  <p>「每周考试成绩追踪」是一个部署在云端的<b>多用户成绩管理平台</b>，围绕中小学周考场景，覆盖<b>成绩记录 → 错题整理 → 学情分析 → 弱项追踪</b>的完整闭环。手机、平板、电脑浏览器均可直接使用，无需安装 App。</p>
+  <table>
+    <tr><th style="width:130px">功能板块</th><th>说明</th></tr>
+    <tr><td>✏️ 录入</td><td>新增考试记录与错题，是数据入口</td></tr>
+    <tr><td>📅 考试记录</td><td>按时间线查看历史考试，可编辑、删除</td></tr>
+    <tr><td>📕 错题本</td><td>错题归档，支持拍照 OCR 识别、AI 题库搜原题、打印与导出 Word</td></tr>
+    <tr><td>📊 学情统计</td><td>得分率趋势、排名变化、错题类型分布、薄弱知识点排行</td></tr>
+    <tr><td>🎯 追踪事项</td><td>针对薄弱项建立待办，跟踪落实</td></tr>
+    <tr><td>⚙️ 数据管理</td><td>个人设置 + 管理员专区（用户、OCR、备份等）</td></tr>
+  </table>
+  <h3>角色与权限</h3>
+  <table>
+    <tr><th style="width:110px">角色</th><th>能做什么</th></tr>
+    <tr><td><span class="role-tag role-admin">管理员</span><br><span class="muted">家长 / 老师</span></td><td>拥有全部权限：录入、查看<b>所有人</b>的成绩与错题（可按成员切换查看范围）、创建/管理用户、审批注册申请、设置 OCR 与题库、备份与恢复数据。</td></tr>
+    <tr><td><span class="role-tag role-member">普通成员</span><br><span class="muted">学生</span></td><td>管理<b>自己的</b>数据：录成绩、记错题、看自己的学情统计与追踪事项；可自助修改学校、年级、密码，并按实名规则自助修改姓名。看不到其他人的数据。</td></tr>
+  </table>
+  <div class="tip">🔒 <b>数据安全</b>：密码采用加盐哈希存储，任何人（包括管理员）都无法看到明文；普通成员之间数据完全隔离；服务器每日凌晨 2:00 自动备份数据，保留最近 14 天。</div>
+</section>
+
+<!-- ================= 2 快速上手 ================= -->
+<section class="chapter" id="quick">
+  <h2>二、快速上手（三分钟学会）</h2>
+  <ol class="steps">
+    <li><b>打开系统</b>：浏览器访问 <code>http://43.163.230.72</code>，输入用户名和密码登录。</li>
+    <li><b>录一次成绩</b>：点「✏️ 录入」→ 填考试日期和<b>周次标签</b>（如"第3周"）→ 输入各科分数 → 保存。</li>
+    <li><b>记一道错题</b>：「✏️ 录入」→ 新增错题 → 选科目、填知识点 → 拍题上传照片 → 保存。</li>
+    <li><b>一键出原题集</b>：「📕 错题本」→ 对错题点「📷 识别」，系统自动完成 <b>OCR 转写 → AI 润色 → 题库搜原题</b> → 点「🖨️ 原题集 / 打印」即可得到一份含原题与配图的复习卷。</li>
+    <li><b>看学情</b>：「📊 学情统计」查看得分率趋势、排名变化和薄弱知识点排行；把弱项加进「🎯 追踪事项」督促落实。</li>
+  </ol>
+  <div class="tip">💡 <b>周次标签是核心概念</b>：同一次考试，所有参与的同学都填<b>同一个标签</b>（如"第3周"），系统会自动把这些成绩合并成一组进行对比排名。标签填写不一致将无法合并对比。</div>
+</section>
+
+<!-- ================= 3 账号 ================= -->
+<section class="chapter" id="account">
+  <h2>三、账号与个人设置</h2>
+
+  <h3 id="s-login">3.1 登录与自主注册</h3>
+  <p>首次使用可点击登录框下方的「自主注册」申请账号，填写：<b>用户名</b>（2–20 位字母 / 数字 / 下划线，建议用姓名拼音首字母，如 <code>lhy</code>）、<b>姓名</b>（真实姓名）、<b>密码</b>（至少 4 位）、学校、年级。提交后进入待审批状态，<b>管理员在「数据管理 → 注册申请审批」中通过后即可登录</b>。管理员也可以在「用户管理」中直接为成员创建账号。</p>
+
+  <h3 id="profile">3.2 我的资料（学校 / 年级）</h3>
+  <p>「⚙️ 数据管理」页可修改<b>学校</b>与<b>年级</b>。年级用于错题搜题的学段匹配和学情分析。</p>
+  <div class="ok">✅ <b>自动升级</b>：每个学年（每年 9 月 1 日）系统会自动把所有学生升入下一年级（如六年级 → 初一），无需手动修改。</div>
+
+  <h3 id="rename">3.3 修改姓名（实名规则）</h3>
+  <p>成员可在「⚙️ 数据管理 → ✍️ 修改姓名」自助更正姓名，但必须同时满足两条规则：</p>
+  <table>
+    <tr><th style="width:150px">规则</th><th>说明</th><th style="width:170px">示例</th></tr>
+    <tr><td>① 真实姓名</td><td>2–4 个汉字，不接受字母、数字、昵称</td><td>✅ 陆浩洋　❌ 小猫钓鱼</td></tr>
+    <tr><td>② 首字母一致</td><td>姓名拼音首字母必须与登录用户名一致</td><td>陆浩洋 → <code>lhy</code> ✔</td></tr>
+  </table>
+  <p class="muted">保存失败时会提示系统计算出的拼音首字母，请对照核对。如因<b>姓氏多音字</b>（曾、单、查、仇等）无法通过校验，或需改成与用户名无关的名字，请联系管理员在「用户管理」中处理（管理员不受首字母规则限制）。</p>
+
+  <h3 id="password">3.4 修改密码与忘记密码</h3>
+  <p>「⚙️ 数据管理 → 🔑 修改密码」：<b>需先输入原密码</b>，新密码至少 4 位。修改后本设备保持登录，其他设备需用新密码重新登录。</p>
+  <div class="warn">⚠️ 忘记密码无法自助找回，请联系管理员在「用户管理 → 重置密码」为你设置新密码。</div>
+</section>
+
+<!-- ================= 4 成绩 ================= -->
+<section class="chapter" id="exam">
+  <h2>四、成绩管理</h2>
+
+  <h3>4.1 新增考试记录</h3>
+  <p>入口：「✏️ 录入 → 📝 新增考试记录」。</p>
+  <table>
+    <tr><th style="width:150px">字段</th><th>填写说明</th></tr>
+    <tr><td>考试日期</td><td>本次考试的日期</td></tr>
+    <tr><td><b>周次标签</b></td><td><b>同一次考试所有人填同一个标签</b>（如"第3周"），填相同标签的记录将自动合并为一场考试进行对比排名；备注：可补充说明（如"月考""期中"）</td></tr>
+    <tr><td>记录归属 <span class="role-tag role-admin">管理员</span></td><td>管理员代录时可选择归属到哪位成员；成员默认归属自己</td></tr>
+    <tr><td>各科分数</td><td>按系统设置的科目逐项填写（满分可在数据管理中调整）</td></tr>
+  </table>
+
+  <h3 id="records">4.2 考试记录时间线</h3>
+  <p>「📅 考试记录」按时间倒序展示历次考试及各科得分，可直接进入<b>编辑</b>（改分、改标签）或<b>删除</b>。管理员在此处也可代为修改任何成员的记录。</p>
+
+  <h3>4.3 查看范围</h3>
+  <p>页面顶部的「查看范围」下拉框：<span class="role-tag role-member">成员</span> 固定只能看到自己的数据；<span class="role-tag role-admin">管理员</span> 可在此切换查看任一成员，或查看全体汇总。</p>
+</section>
+
+<!-- ================= 5 错题本 ================= -->
+<section class="chapter" id="wrong">
+  <h2>五、错题本与 OCR 智能识别</h2>
+
+  <h3 id="wrong-add">5.1 新增错题</h3>
+  <p>入口：「✏️ 录入 → ❌ 新增错题」。填写<b>科目</b>、<b>知识点</b>（如"一元一次方程"，用于后续薄弱点统计）、<b>错因类型</b>，并用手机<b>拍下题目照片</b>上传；可关联到某次考试。</p>
+  <div class="tip">📷 <b>拍照技巧</b>：一题一拍、光线充足、镜头正对纸面、避免手指遮挡。照片会自动按题目归档（每题最多 20 张），印刷题目会被识别，<b>手写作答痕迹会被自动忽略</b>。</div>
+
+  <h3 id="ocr">5.2 OCR 识别 · AI 润色 · 题库搜原题</h3>
+  <p>在「📕 错题本」中对某道错题点「📷 识别」，系统将自动完成以下流水线（无需人工干预）：</p>
+  <table>
+    <tr><th style="width:150px">步骤</th><th>说明</th></tr>
+    <tr><td>① 定点 OCR</td><td>AI 按<b>题号和知识点</b>只转写本题内容（对齐"手动框选切题"体验）；数学式子转写为易读写法（<code>^2</code> 平方、<code>a/b</code> 分数、<code>√</code> 根号）；几何图 / 统计图以【图：××图】占位标注</td></tr>
+    <tr><td>② AI 润色</td><td>自动修正 OCR 错字、规范题面格式；<b>填空处的括号与横线保持空白</b>，绝不替学生填答案</td></tr>
+    <tr><td>③ 双路搜题</td><td>同时用「完整题面」和「AI 提炼的关键词」两条路检索在线题库，按<b>匹配度</b>择优保留最相近的原题；每题最多消耗 2 次搜题额度</td></tr>
+    <tr><td>④ 原题集展示</td><td>命中原题时显示<b>题库原题、匹配度分数、试卷来源</b>，并代理展示原题配图；未命中时自动回退为 AI 重排版题面 + 原照片</td></tr>
+  </table>
+  <p class="muted">识别结果会缓存：同一张照片重复识别不重复消耗额度。搜题年级默认取账号年级，批量识别时也可在弹窗中手动指定。</p>
+
+  <h3 id="print">5.3 原题集 · 打印 · 导出 Word</h3>
+  <p>错题本页提供「🖨️ 错题原题集」：把多道错题按<b>试卷排版</b>合并输出（含题面、来源与配图），支持：</p>
+  <ul>
+    <li><b>🖨️ 打印</b>：直接调起浏览器打印，适合打印成纸质复习卷；</li>
+    <li><b>📄 导出 Word</b>：生成 .docx 文件，含原题图片，可在 Word 中二次编辑后打印或分享。</li>
+  </ul>
+</section>
+
+<!-- ================= 6 学情 ================= -->
+<section class="chapter" id="stats">
+  <h2>六、学情统计</h2>
+  <p>「📊 学情统计」自动汇总当前查看范围内的所有数据，包含六块内容：</p>
+  <table>
+    <tr><th style="width:190px">板块</th><th>解读要点</th></tr>
+    <tr><td>📊 整体指标</td><td>平均分 / 得分率等总体水平一览</td></tr>
+    <tr><td>📈 成绩趋势</td><td>各科得分率随周次的折线变化——看升降，别只看单次分数</td></tr>
+    <tr><td>🏅 排名变化</td><td>在同周次合并对比中的名次起伏</td></tr>
+    <tr><td>🏷️ 错题类型分布</td><td>按录入的错因分类统计，定位是"知识不会"还是"粗心失分"</td></tr>
+    <tr><td>🎯 薄弱知识点排行</td><td>按错题出现次数排序的知识点清单，<b>排行靠前的就是下一步补强目标</b></td></tr>
+    <tr><td>🏫 按年级分析</td><td>跨年级查看不同学段的统计口径</td></tr>
+  </table>
+  <div class="tip">💡 建议结合「📚 学情分析专家」的思路使用：先看趋势定方向，再用薄弱知识点排行定题目，最后把动作落到「追踪事项」。</div>
+</section>
+
+<!-- ================= 7 追踪 ================= -->
+<section class="chapter" id="track">
+  <h2>七、追踪事项</h2>
+  <p>「🎯 追踪事项」是错题本的"行动清单"：针对某个薄弱知识点建立一条待办（如"每日 3 道分数应用题"），完成后勾选归档。列表分为<b>进行中</b>与<b>已完成</b>两区，支持随时新增与删除。推荐用法：每次周考后，从「薄弱知识点排行」中挑 1–3 项转为追踪事项，下次考试前逐项清零。</p>
+</section>
+
+<!-- ================= 8 数据管理 ================= -->
+<section class="chapter" id="data">
+  <h2>八、数据管理（管理员专区）</h2>
+  <p class="muted">以下功能仅 <span class="role-tag role-admin">管理员</span> 可见可用。普通成员的数据管理页仅含 3.2–3.4 的个人设置。</p>
+
+  <h3>8.1 🔍 OCR 与题库设置</h3>
+  <p>配置识别通道：<b>智谱 GLM-4V-Flash</b>（免费、数学公式理解好，推荐）或腾讯云手写体 OCR（每月 1000 次免费）；同时配置<b>学库宝题库 Key</b> 以启用搜题。未配置时错题照片上不显示识别按钮。</p>
+
+  <h3>8.2 👥 用户管理</h3>
+  <table>
+    <tr><th style="width:150px">操作</th><th>说明</th></tr>
+    <tr><td>提升 / 降级</td><td>成员 ⇄ 管理员互转；<b>不能降级或删除自己</b>（防止误操作失去管理权限）</td></tr>
+    <tr><td>改姓名</td><td>直接修改任意成员的显示姓名，不受首字母规则限制（多音字兜底入口）</td></tr>
+    <tr><td>重置密码</td><td>成员忘记密码时在此设置新密码</td></tr>
+    <tr><td>删除用户</td><td>从系统中移除账号</td></tr>
+  </table>
+
+  <h3>8.3 📨 注册申请审批</h3>
+  <p>成员自主注册的申请在此审批通过；若申请的用户名已被占用，审批时会自动提示并清除失效申请。</p>
+
+  <h3>8.4 ⚙️ 科目满分设置</h3>
+  <p>按需调整各科满分（如数学 120 分），得分率统计将按满分自动换算。</p>
+
+  <h3>8.5 💾 数据备份与恢复 / 清空数据</h3>
+  <p>支持手动备份当前数据快照并下载留存、从备份文件恢复；「云端同步状态」卡可查看数据同步情况。</p>
+  <div class="warn">⚠️ 「清空数据」会<b>不可逆地删除全部成绩与错题</b>，仅限全新学期重新开始时使用，操作前请务必先完成备份。</div>
+</section>
+
+<!-- ================= 9 FAQ ================= -->
+<section class="chapter" id="faq">
+  <h2>九、常见问题 FAQ</h2>
+
+  <details open><summary>1. 忘记密码怎么办？</summary>
+    <p>密码无法自助找回（系统只存加密摘要）。请联系管理员在「用户管理 → 重置密码」为你设置新密码，登录后可在「🔑 修改密码」改回自己的密码。</p></details>
+
+  <details><summary>2. 修改姓名总是失败？</summary>
+    <p>请检查两点：① 是否为 2–4 个汉字的真实姓名；② 姓名拼音首字母是否与登录用户名一致（如 <code>lhy</code> 对应"陆浩洋"）。若姓氏是多音字（曾、单、查、仇等）导致计算首字母与用户名不符，请直接联系管理员处理。</p></details>
+
+  <details><summary>3. 年级需要每年手动改吗？</summary>
+    <p>不需要。每年 9 月 1 日系统自动全员升级（六年级 → 初一 → 初二……）。</p></details>
+
+  <details><summary>4. 为什么我录的成绩没和别人合并对比？</summary>
+    <p>检查「周次标签」是否完全一致——合并对比按标签匹配，"第3周"和"第三周"会被视为两场不同的考试。</p></details>
+
+  <details><summary>5. OCR 识别不出来或识别错位？</summary>
+    <p>① 确认管理员已在「OCR 设置」中启用识别通道；② 重拍照片：光线充足、字迹清晰、一题一拍；③ 录入错题时尽量填写<b>题号和知识点</b>，AI 会据此只转写目标题目，多题同图时定位更准；④ 手写作答会被自动忽略，无需涂抹。</p></details>
+
+  <details><summary>6. 搜题为什么有时找到的不是原题？</summary>
+    <p>系统用「完整题面 + 提炼关键词」双路检索并按匹配度择优，但题库覆盖有限，自编题、教材变式题可能无原题——此时显示 AI 重排题面 + 原照片，同样可用于复习。匹配度分数越高越接近原题。</p></details>
+
+  <details><summary>7. 手机上能用吗？</summary>
+    <p>可以。系统为响应式设计，手机浏览器直接访问即可，拍照上传错题正是手机端的核心用法。也可以把页面"添加到主屏幕"当 App 使用。</p></details>
+
+  <details><summary>8. 我的数据别人能看到吗？</summary>
+    <p>普通成员的数据相互隔离，仅本人和管理员可见；管理员代录、代改时会明确标注归属。所有数据传输与存储在自有服务器，每日自动备份。</p></details>
+</section>
+
+<!-- ================= 10 速查 ================= -->
+<section class="chapter" id="appendix">
+  <h2>十、功能速查表</h2>
+  <table>
+    <tr><th style="width:90px">页面</th><th>功能</th><th style="width:70px">成员</th><th style="width:70px">管理员</th></tr>
+    <tr><td rowspan="2">✏️ 录入</td><td>新增 / 编辑考试记录（周次标签合并对比）</td><td>✅ 本人</td><td>✅ 全部</td></tr>
+    <tr><td>新增错题（科目 / 知识点 / 错因 / 照片）</td><td>✅ 本人</td><td>✅ 全部</td></tr>
+    <tr><td>📅 考试记录</td><td>时间线查看、编辑、删除</td><td>✅ 本人</td><td>✅ 全部</td></tr>
+    <tr><td rowspan="3">📕 错题本</td><td>📷 OCR 定点识别 + AI 润色</td><td>✅</td><td>✅</td></tr>
+    <tr><td>🔍 双路题库搜原题（匹配度 / 来源 / 配图）</td><td>✅</td><td>✅</td></tr>
+    <tr><td>🖨️ 原题集打印 / 📄 导出 Word</td><td>✅</td><td>✅</td></tr>
+    <tr><td>📊 学情统计</td><td>趋势 / 排名 / 错因分布 / 薄弱知识点 / 按年级</td><td>✅ 本人</td><td>✅ 全部</td></tr>
+    <tr><td>🎯 追踪事项</td><td>薄弱项待办清单（新增 / 完成 / 删除）</td><td>✅ 本人</td><td>✅ 全部</td></tr>
+    <tr><td rowspan="7">⚙️ 数据管理</td><td>我的资料（学校 / 年级，学年自动升级）</td><td>✅</td><td>✅</td></tr>
+    <tr><td>✍️ 修改姓名（实名 + 首字母规则）</td><td>✅</td><td>走用户管理</td></tr>
+    <tr><td>🔑 修改密码（验证原密码）</td><td>✅</td><td>✅</td></tr>
+    <tr><td>🔍 OCR / 题库设置</td><td>—</td><td>✅</td></tr>
+    <tr><td>👥 用户管理 / 📨 注册审批</td><td>—</td><td>✅</td></tr>
+    <tr><td>⚙️ 科目满分 / 💾 备份恢复</td><td>—</td><td>✅</td></tr>
+    <tr><td>🗑️ 清空数据（危险操作，先备份）</td><td>—</td><td>✅</td></tr>
+  </table>
+  <p class="muted" style="margin-top:18px">—— 本说明书与系统功能同步更新 · 在线最新版见 <code>http://43.163.230.72/help.html</code> ——</p>
+</section>
+
+</main>
+</div>
+</body>
+</html>

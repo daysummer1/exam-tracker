@@ -207,6 +207,20 @@ function makeUser(username, name, password, role, extra) {
 }
 function findUser(username) { return db.users.find(u => u.username === username); }
 
+/* 汉字→拼音首字母：Intl.Collator 中文拼音序 + GB2312 声母锚点逐段定位（零依赖，无需内嵌码表） */
+const PY_ANCHORS = [['a','阿'],['b','八'],['c','擦'],['d','搭'],['e','蛾'],['f','发'],['g','噶'],['h','哈'],['j','击'],['k','喀'],['l','垃'],['m','妈'],['n','拿'],['o','哦'],['p','啪'],['q','期'],['r','然'],['s','撒'],['t','塌'],['w','挖'],['x','希'],['y','压'],['z','匝']];
+const pyColl = new Intl.Collator('zh-Hans-CN');
+function pyFirst(s) {
+  let out = '';
+  for (const ch of String(s)) {
+    if (!/[\u4e00-\u9fa5]/.test(ch)) { out += '?'; continue; }
+    let letter = 'a';
+    for (const [L, anc] of PY_ANCHORS) { if (pyColl.compare(ch, anc) >= 0) letter = L; else break; }
+    out += letter;
+  }
+  return out;
+}
+
 /* 初始化数据库 + 启动时按学年自动升级（跨 9/1 后重启即生效） */
 initDb();
 promoteUsers();
@@ -716,6 +730,17 @@ const server = http.createServer(async (req, res) => {
           if (newPw.length < 4) return json(res, 400, { error: '新密码至少 4 位' });
           u.salt = rand(8); u.pwhash = sha(u.salt + newPw);
           persist();
+          return json(res, 200, visibleState(user));
+        }
+        /* 成员自助改姓名：须为 2-4 位汉字实名，且拼音首字母与登录用户名一致（如 李昊宇→lhy）；管理员不受限（走用户管理） */
+        if (body.action === 'selfrename') {
+          const u = findUser(user.username);
+          if (!u) return json(res, 401, { error: '登录状态异常，请重新登录' });
+          const name = String(body.name || '').trim();
+          if (!/^[\u4e00-\u9fa5]{2,4}$/.test(name)) return json(res, 400, { error: '姓名须为 2-4 位汉字的真实姓名（不支持字母、数字或昵称）' });
+          const init = pyFirst(name);
+          if (init !== u.username) return json(res, 400, { error: '姓名「' + name + '」的拼音首字母为「' + init + '」，与登录用户名「' + u.username + '」不符，请核对填写；如有特殊情况请联系管理员' });
+          if (u.name !== name) { u.name = name; persist(); }
           return json(res, 200, visibleState(user));
         }
         /* 管理员调整用户角色（提升为管理员 / 降为成员） */

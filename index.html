@@ -367,7 +367,7 @@
       <p class="hint" style="margin-bottom:10px">年级用于区分不同学段的学生成绩；<b>每个学年（每年 9 月 1 日）会自动升一级</b>，无需手动修改。</p>
       <div class="grid2">
         <div>
-          <label>姓名（如需修改请联系管理员）</label>
+          <label>姓名</label>
           <input type="text" id="my-name" readonly>
           <label style="margin-top:8px">学校</label>
           <input type="text" id="my-school" placeholder="如：实验小学">
@@ -380,6 +380,21 @@
       </div>
       <div class="flex" style="margin-top:12px; justify-content:flex-end">
         <button class="btn" onclick="saveMyProfile()">保存我的资料</button>
+      </div>
+      <div style="margin-top:18px; padding-top:14px; border-top:1px dashed var(--line, #ddd)" id="selfrename-card">
+        <h2 style="font-size:15px; margin-bottom:8px">✍️ 修改姓名</h2>
+        <div class="grid2">
+          <div>
+            <label>新姓名（真实姓名，2-4 个汉字）</label>
+            <input type="text" id="sr-name" maxlength="4" placeholder="如：李昊宇">
+          </div>
+          <div>
+            <p class="hint">实名规则：只能填写 <b>2-4 个汉字的真实姓名</b>，且姓名的<b>拼音首字母</b>须与登录用户名一致（如「李昊宇」对应 <b>lhy</b>）。不符合规则会保存失败；如有特殊情况请联系管理员处理。</p>
+          </div>
+        </div>
+        <div class="flex" style="margin-top:12px; justify-content:flex-end">
+          <button class="btn ghost" onclick="selfRename()">修改姓名</button>
+        </div>
       </div>
       <div style="margin-top:18px; padding-top:14px; border-top:1px dashed var(--line, #ddd)">
         <h2 style="font-size:15px; margin-bottom:8px">🔑 修改密码</h2>
@@ -1910,6 +1925,8 @@ function renderMyProfile(){
   document.getElementById('my-school').value = me.school||'';
   fillGradeSelect('my-grade', me.grade||'', true);
   document.getElementById('my-grade-tip').innerHTML = me.grade ? nextGradeTip(me.username) : '当前未设置年级（家长/老师账号可不填）';
+  const src = document.getElementById('selfrename-card');
+  if (src) src.style.display = me.role === 'admin' ? 'none' : '';   /* 管理员改姓名走「用户管理」，不受首字母规则限制 */
 }
 async function saveMyProfile(){
   if(!me) return;
@@ -1940,6 +1957,22 @@ async function changeMyPw(){
     document.getElementById('pw-new').value = '';
     document.getElementById('pw-new2').value = '';
     toast('密码已修改 ✓');
+  }catch(e){ toast('修改失败：'+e.message); }
+}
+
+/* 修改自己的姓名（实名规则：2-4 个汉字，拼音首字母须与登录用户名一致，服务端强校验） */
+async function selfRename(){
+  if(!me) return;
+  const name = document.getElementById('sr-name').value.trim();
+  if(!name) return toast('请填写新姓名');
+  if(!confirm('确定把姓名改为「'+name+'」吗？\n规则：真实姓名 2-4 个汉字，拼音首字母须与登录用户名一致。')) return;
+  try{
+    const d = await api('/api/users', { action:'selfrename', name });
+    applyServerState(d);
+    updateUserChip();
+    document.getElementById('my-name').value = me.name||'';
+    document.getElementById('sr-name').value = '';
+    toast('姓名已更新 ✓');
   }catch(e){ toast('修改失败：'+e.message); }
 }
 

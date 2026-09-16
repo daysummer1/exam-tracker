@@ -107,6 +107,7 @@
     .tab[data-page="stats"]::before{content:"📊";}
     .tab[data-page="track"]::before{content:"🎯";}
     .tab[data-page="data"]::before{content:"⚙️";}
+    .tab[data-page="help"]::before{content:"❓";}
     .card{padding:12px; border-radius:12px; margin-bottom:10px;}
     .card h2{font-size:15px;}
     .grid2,.grid3{grid-template-columns:1fr; gap:10px;}
@@ -167,7 +168,7 @@
       <input type="password" id="login-password" autocomplete="current-password" onkeydown="if(event.key==='Enter')login()" data-page-node-id="FG4Wq6l1xSKO0RPuZMmvoY">
       <div id="login-error" data-page-node-id="9H9upsOMEeULNgFWODnuDB"></div>
       <button class="btn" onclick="login()" data-page-node-id="VpIf6arPlOpGK6hFguGbPf">登 录</button>
-      <p class="hint" style="text-align:center; margin-top:10px" id="signup-entry-wrap" data-page-node-id="KMgWrxmTeFDHvpcSApwr1F">还没有账号？<a href="javascript:void(0)" onclick="showSignup()" style="color:var(--primary); font-weight:600">自主注册</a>（需管理员审批）</p>
+      <p class="hint" style="text-align:center; margin-top:10px" id="signup-entry-wrap" data-page-node-id="KMgWrxmTeFDHvpcSApwr1F">还没有账号？<a href="javascript:void(0)" onclick="showSignup()" style="color:var(--primary); font-weight:600">自主注册</a>（需管理员审批） · <a href="/help.html" target="_blank" style="color:var(--muted)">📖 使用说明书</a></p>
     </div>
     <!-- 自主注册 -->
     <div id="signup-pane" style="display:none">
@@ -203,6 +204,7 @@
         <button class="tab" data-page="stats" data-page-node-id="s7ehZ4fbHCxZMtMW2lctzo">学情统计</button>
         <button class="tab" data-page="track" data-page-node-id="g7A5TUtaszUR6N4ixfHJw4">追踪事项</button>
         <button class="tab" data-page="data" data-page-node-id="9WCyUBQ37B2cjInFSZC3pM">数据管理</button>
+        <button class="tab" data-page="help" title="打开使用说明书（新窗口）">帮助</button>
       </div>
     </div>
   </header>
@@ -824,6 +826,8 @@ function updateUserChip(){
 
 /* ================= Tab 切换 ================= */
 document.querySelectorAll('.tab').forEach(t=>t.addEventListener('click',()=>{
+  /* 帮助 tab：打开使用说明书新窗口，不切换当前页面 */
+  if(t.dataset.page==='help'){ window.open('/help.html','_blank'); return; }
   document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
   t.classList.add('active');
   ['entry','records','wrong','stats','track','data'].forEach(p=>document.getElementById('page-'+p).style.display = (p===t.dataset.page)?'':'none');
